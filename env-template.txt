@@ -1,9 +1,0 @@
-# Frontend Environment Variables
-# Copy this file to .env and update with your actual backend URL
-
-# Your deployed backend URL from Render
-REACT_APP_API_URL=https://your-app-name.onrender.com
-
-# Optional: Customize the app title
-REACT_APP_TITLE=Trading Signals Pro
-

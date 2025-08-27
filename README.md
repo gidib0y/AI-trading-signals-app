@@ -1,119 +1,89 @@
-# Trading Signals WebApp
+# AI Trading Signal Generator
 
-A comprehensive trading signals application that combines market scanning, historical data analysis, market sentiment, and technical analysis to generate profitable trading signals.
+An intelligent trading signal generator that uses machine learning to analyze market data and generate buy/sell signals for various financial instruments.
 
 ## Features
 
-### 🚀 Core Functionality
-- **Real-time Market Scanner**: Continuously monitors multiple markets and instruments
-- **Technical Analysis**: Implements 20+ technical indicators (RSI, MACD, Bollinger Bands, etc.)
-- **Sentiment Analysis**: Analyzes news, social media, and market sentiment
-- **Signal Generation**: AI-powered trading signal generation with confidence scores
-- **Historical Data**: Comprehensive historical data analysis and backtesting
-- **Portfolio Tracking**: Monitor your positions and track performance
+- **Real-time Market Data**: Fetches live data from Yahoo Finance
+- **Technical Indicators**: Calculates various technical indicators (RSI, MACD, Bollinger Bands, etc.)
+- **Machine Learning Models**: Uses scikit-learn for signal prediction
+- **Web Interface**: FastAPI-based web application with interactive charts
+- **Signal Generation**: Generates buy/sell/hold signals based on ML predictions
+- **Backtesting**: Historical performance analysis
 
-### 📊 Technical Indicators
-- Moving Averages (SMA, EMA, WMA)
-- RSI (Relative Strength Index)
-- MACD (Moving Average Convergence Divergence)
-- Bollinger Bands
-- Stochastic Oscillator
-- Williams %R
-- ATR (Average True Range)
-- Volume Analysis
-- Support/Resistance Levels
+## Project Structure
 
-### 🧠 Sentiment Analysis
-- News sentiment scoring
-- Social media sentiment analysis
-- Market fear/greed indicators
-- Economic calendar integration
-
-### 📈 Data Sources
-- Yahoo Finance API
-- Alpha Vantage (optional)
-- Real-time market data
-- Historical price data
-- Volume and market cap data
-
-## Tech Stack
-
-### Backend
-- **Python 3.9+**
-- **FastAPI**: High-performance web framework
-- **Pandas & NumPy**: Data manipulation and analysis
-- **TA-Lib**: Technical analysis library
-- **SQLAlchemy**: Database ORM
-- **SQLite**: Lightweight database
-
-### Frontend
-- **React 18** with TypeScript
-- **Material-UI**: Modern, responsive UI components
-- **Recharts**: Interactive charts and visualizations
-- **Lightweight Charts**: Professional trading charts
-- **Axios**: HTTP client for API communication
+```
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI application entry point
+│   ├── models/              # Data models and schemas
+│   ├── services/            # Business logic and ML services
+│   ├── utils/               # Utility functions and helpers
+│   └── templates/           # HTML templates for web interface
+├── data/                    # Data storage and caching
+├── models/                  # Trained ML models
+├── notebooks/               # Jupyter notebooks for analysis
+├── tests/                   # Unit tests
+├── requirements.txt         # Python dependencies
+└── README.md               # This file
+```
 
 ## Installation
 
-### Prerequisites
-- Python 3.9+
-- Node.js 16+
-- npm or yarn
-
-### Backend Setup
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the backend server
-python main.py
-```
-
-### Frontend Setup
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm start
-```
+1. Clone the repository
+2. Create a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
-1. **Start the backend server** (runs on http://localhost:8000)
-2. **Start the frontend** (runs on http://localhost:3000)
-3. **Configure your API keys** in the `.env` file
-4. **Select markets** to scan and analyze
-5. **Review generated signals** with confidence scores
-6. **Track your portfolio** and performance
+1. Start the application:
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+2. Open your browser and navigate to `http://localhost:8000`
+
+3. Use the web interface to:
+   - Select stocks/symbols
+   - Generate trading signals
+   - View technical analysis charts
+   - Analyze historical performance
 
 ## API Endpoints
 
-- `GET /api/markets` - Available markets
-- `GET /api/scan` - Market scanner results
-- `GET /api/signals` - Trading signals
-- `GET /api/analysis/{symbol}` - Technical analysis for symbol
-- `GET /api/sentiment/{symbol}` - Sentiment analysis
-- `POST /api/portfolio` - Portfolio management
+- `GET /`: Main dashboard
+- `GET /api/symbols`: Get available symbols
+- `POST /api/analyze`: Analyze a symbol and generate signals
+- `GET /api/signals/{symbol}`: Get signals for a specific symbol
+- `GET /api/history/{symbol}`: Get historical data and analysis
 
 ## Configuration
 
-Create a `.env` file in the backend directory:
-```env
-ALPHA_VANTAGE_API_KEY=your_key_here
-NEWS_API_KEY=your_key_here
-DATABASE_URL=sqlite:///trading_signals.db
+Create a `.env` file in the root directory:
+```
+API_KEY=your_api_key_here
+DEBUG=True
 ```
 
-## Disclaimer
+## Contributing
 
-This application is for educational and research purposes only. Trading involves substantial risk and is not suitable for all investors. Past performance does not guarantee future results. Always do your own research and consider consulting with a financial advisor.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License
+
+
 
