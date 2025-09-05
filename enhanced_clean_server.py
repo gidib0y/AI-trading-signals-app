@@ -3412,11 +3412,11 @@ async def get_main_page():
                         }
                         
                         // Update signals display area (bottom)
-                        console.log('Current signals data:', data.current_signals);
-                        if (data.current_signals && data.current_signals.length > 0) {
+                        console.log('Current signals data:', data.signals);
+                        if (data.signals && data.signals.length > 0) {
                             // Show signals if available
-                            console.log(`Displaying ${data.current_signals.length} signals`);
-                            displayScannerSignals(data.current_signals);
+                            console.log(`Displaying ${data.signals.length} signals`);
+                            displayScannerSignals(data.signals);
                         } else {
                             // Show scanning indicator
                             console.log('No signals available, showing scanning indicator');
@@ -3507,7 +3507,7 @@ async def get_main_page():
                 const confidence = (signal && signal.confidence) ? parseFloat(signal.confidence) : 0;
                 const signalType = (signal && signal.signal) ? signal.signal : 'UNKNOWN';
                 const symbol = (signal && signal.symbol) ? signal.symbol : 'N/A';
-                const entryPrice = (signal && signal.entry_price) ? parseFloat(signal.entry_price) : 0;
+                const entryPrice = (signal && signal.current_price) ? parseFloat(signal.current_price) : 0;
                 const targetPrice = (signal && signal.target_price) ? parseFloat(signal.target_price) : 0;
                 const stopLoss = (signal && signal.stop_loss) ? parseFloat(signal.stop_loss) : 0;
                 const currentPrice = (signal && signal.current_price) ? parseFloat(signal.current_price) : 0;
