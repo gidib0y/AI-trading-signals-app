@@ -91,8 +91,29 @@ class TechnicalIndicators:
             df['BB_Upper'] = bb_indicator.bollinger_hband()
             df['BB_Middle'] = bb_indicator.bollinger_mavg()
             df['BB_Lower'] = bb_indicator.bollinger_lband()
-            df['BB_Width'] = (df['BB_Upper'] - df['BB_Lower']) / df['BB_Middle']
-            df['BB_Position'] = (df['Close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
+            # Safe division for BB_Width to avoid NaN
+            bb_upper = df['BB_Upper']
+            bb_lower = df['BB_Lower']
+            bb_middle = df['BB_Middle']
+            
+            # Avoid division by zero or very small numbers
+            safe_bb_middle = np.where(np.abs(bb_middle) < 0.0001, 1.0, bb_middle)
+            df['BB_Width'] = np.where(
+                (bb_upper - bb_lower) > 0,
+                (bb_upper - bb_lower) / safe_bb_middle,
+                0
+            )
+            # Safe division for BB_Position to avoid NaN
+            bb_upper = df['BB_Upper']
+            bb_lower = df['BB_Lower']
+            bb_range = bb_upper - bb_lower
+            
+            # Avoid division by zero
+            df['BB_Position'] = np.where(
+                bb_range > 0.0001,
+                (df['Close'] - bb_lower) / bb_range,
+                0.5  # Default to middle when range is too small
+            )
             
         except Exception as e:
             print(f"Error calculating Bollinger Bands: {e}")
@@ -154,12 +175,8 @@ class TechnicalIndicators:
                 volume=df['Volume']
             ).on_balance_volume()
             
-            # Volume Rate of Change
-            df['Volume_ROC'] = ta.volume.VolumeRateOfChangeIndicator(
-                close=df['Close'],
-                volume=df['Volume'],
-                window=20
-            ).volume_rate_of_change()
+            # Volume Rate of Change (using simple calculation instead)
+            df['Volume_ROC'] = df['Volume'].pct_change(periods=20) * 100
             
             # Money Flow Index
             df['MFI'] = ta.volume.MFIIndicator(
@@ -286,15 +303,21 @@ class TechnicalIndicators:
         elif rsi > 70:
             signals['rsi'] = -0.9  # Strong sell
         else:
-            signals['rsi'] = (50 - rsi) / 50 * 0.5  # Neutral to moderate
+            # Safe division to avoid NaN
+            rsi_diff = 50 - rsi
+            signals['rsi'] = (rsi_diff / 50) * 0.5 if rsi != 50 else 0  # Neutral to moderate
         
         # MACD Signal Strength
         macd = latest.get('MACD', 0)
         macd_signal = latest.get('MACD_Signal', 0)
         if macd > macd_signal:
-            signals['macd'] = min((macd - macd_signal) / 0.01, 1.0)  # Buy strength
+            # Safe division to avoid NaN
+            macd_diff = macd - macd_signal
+            signals['macd'] = min(macd_diff / 0.01, 1.0) if abs(macd_diff) > 0.0001 else 0  # Buy strength
         else:
-            signals['macd'] = max((macd_signal - macd) / 0.01, -1.0)  # Sell strength
+            # Safe division to avoid NaN
+            macd_diff = macd_signal - macd
+            signals['macd'] = max(-macd_diff / 0.01, -1.0) if abs(macd_diff) > 0.0001 else 0  # Sell strength
         
         # Bollinger Bands Signal Strength
         bb_position = latest.get('BB_Position', 0.5)
@@ -303,9 +326,12 @@ class TechnicalIndicators:
         elif bb_position > 0.8:
             signals['bollinger'] = -0.8  # Strong sell
         else:
-            signals['bollinger'] = (0.5 - bb_position) * 1.6  # Neutral to moderate
+            # Safe calculation to avoid NaN
+            bb_diff = 0.5 - bb_position
+            signals['bollinger'] = bb_diff * 1.6  # Neutral to moderate
         
         return signals
+
 
 
 

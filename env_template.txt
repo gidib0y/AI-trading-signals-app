@@ -1,0 +1,12 @@
+# Alpha Vantage API Configuration
+# Get your free API key from: https://www.alphavantage.co/support/#api-key
+ALPHA_VANTAGE_API_KEY=your_api_key_here
+
+# Optional: Other environment variables
+DEBUG=True
+LOG_LEVEL=INFO
+
+# Instructions:
+# 1. Copy this file to .env
+# 2. Replace 'your_api_key_here' with your actual Alpha Vantage API key
+# 3. Get free API key from: https://www.alphavantage.co/support/#api-key

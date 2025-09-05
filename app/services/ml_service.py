@@ -3,18 +3,34 @@ import numpy as np
 from typing import Dict, Any, List
 from pathlib import Path
 
+# Try to import scikit-learn, fall back to mock if not available
+try:
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.preprocessing import StandardScaler
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+
 class MLService:
     """Machine Learning service for predicting trading signals"""
     
     def __init__(self):
-        self.model_version = "v1.0-mock"
+        if SKLEARN_AVAILABLE:
+            self.model_version = "v1.0-scikit-learn"
+            self.model = None
+            self.scaler = StandardScaler()
+            print("✅ scikit-learn available - using real ML model")
+        else:
+            self.model_version = "v1.0-mock"
+            print("⚠️ Using mock ML service - scikit-learn not available")
+        
         self.features = [
             'RSI', 'MACD', 'MACD_Signal', 'MACD_Histogram',
             'BB_Upper', 'BB_Lower', 'BB_Middle', 'BB_Width',
             'SMA_20', 'EMA_12', 'Volume_MA', 'Price_Change',
             'Volume_Change', 'Volatility'
         ]
-        print("Using mock ML service - scikit-learn not available")
     
     def prepare_features(self, data: pd.DataFrame) -> pd.DataFrame:
         """Prepare features for ML model"""
@@ -30,7 +46,19 @@ class MLService:
         features_df['BB_Upper'] = data.get('BB_Upper', data['Close'])
         features_df['BB_Lower'] = data.get('BB_Lower', data['Close'])
         features_df['BB_Middle'] = data.get('BB_Middle', data['Close'])
-        features_df['BB_Width'] = (features_df['BB_Upper'] - features_df['BB_Lower']) / features_df['BB_Middle']
+        
+        # Safe division for BB_Width to avoid NaN
+        bb_upper = features_df['BB_Upper']
+        bb_lower = features_df['BB_Lower']
+        bb_middle = features_df['BB_Middle']
+        
+        # Avoid division by zero or very small numbers
+        safe_bb_middle = np.where(np.abs(bb_middle) < 0.0001, 1.0, bb_middle)
+        features_df['BB_Width'] = np.where(
+            (bb_upper - bb_lower) > 0,
+            (bb_upper - bb_lower) / safe_bb_middle,
+            0
+        )
         
         # Moving Averages
         features_df['SMA_20'] = data.get('SMA_20', data['Close'])
@@ -44,8 +72,13 @@ class MLService:
         features_df['Price_Change'] = data['Close'].pct_change()
         features_df['Volatility'] = data['Close'].rolling(20).std()
         
-        # Fill NaN values
+        # Fill NaN values and handle infinite values IMMEDIATELY after each calculation
         features_df = features_df.fillna(0)
+        features_df = features_df.replace([np.inf, -np.inf], 0)
+        
+        # Ensure all values are finite numbers
+        for col in features_df.columns:
+            features_df[col] = pd.to_numeric(features_df[col], errors='coerce').fillna(0)
         
         return features_df
     
@@ -75,7 +108,10 @@ class MLService:
                 signal_probability = 0.5  # Neutral
             
             # Calculate mock confidence based on indicator strength
-            confidence = min(abs(rsi - 50) / 50 + abs(macd - macd_signal) / 0.01, 0.9)
+            # Safe division to avoid NaN
+            rsi_confidence = abs(rsi - 50) / 50 if rsi != 50 else 0
+            macd_confidence = abs(macd - macd_signal) / 0.01 if abs(macd - macd_signal) > 0.0001 else 0
+            confidence = min(rsi_confidence + macd_confidence, 0.9)
             
             return {
                 'signal_probability': float(signal_probability),

@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+# Distributions and packaging
+.Python
+env/
+venv/
+build/
+develop-eggs/
+dist/
+eggs/
+*.egg-info/
+.installed.txt
+*.manifest
+*.spec
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# OS-specific files
+.DS_Store
+.Trashes
+Thumbs.db
+
+# IDE-specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Environment variables
+.env
+
+# Trading data
+trading_signals.db
+*.db
+
+# Temporary files
+*.tmp
+*.temp

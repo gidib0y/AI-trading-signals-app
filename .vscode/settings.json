@@ -1,0 +1,8 @@
+{
+    "python.defaultInterpreterPath": "C:\\Users\\abwal\\Desktop\\Cursor project\\venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "python.analysis.extraPaths": [
+        "C:\\Users\\abwal\\Desktop\\Cursor project\\venv\\Lib\\site-packages"
+    ]
+}
