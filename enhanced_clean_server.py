@@ -494,6 +494,235 @@ def update_ml_models_with_feedback():
     except Exception as e:
         logger.error(f"Error updating ML models with feedback: {e}")
 
+def analyze_comprehensive_signal_performance():
+    """Comprehensive analysis of signal performance across all dimensions"""
+    try:
+        conn = sqlite3.connect('trading_signals.db')
+        cursor = conn.cursor()
+        
+        # Get all completed signals from last 30 days
+        cursor.execute("""
+            SELECT * FROM signals 
+            WHERE outcome IS NOT NULL 
+            AND timestamp > datetime('now', '-30 days')
+            ORDER BY timestamp DESC
+        """)
+        
+        signals = cursor.fetchall()
+        conn.close()
+        
+        if not signals:
+            return {}
+        
+        # Analyze performance by different dimensions
+        performance_data = {
+            'pattern_performance': analyze_pattern_performance(signals),
+            'timeframe_performance': analyze_timeframe_performance(signals),
+            'session_performance': analyze_session_performance(signals),
+            'ict_performance': analyze_ict_performance(signals),
+            'overall_stats': calculate_overall_stats(signals)
+        }
+        
+        return performance_data
+        
+    except Exception as e:
+        logger.error(f"Error analyzing signal performance: {e}")
+        return {}
+
+def analyze_pattern_performance(signals):
+    """Analyze performance by price action patterns"""
+    pattern_stats = {}
+    
+    for signal in signals:
+        # Parse signal data (assuming JSON format)
+        try:
+            signal_data = eval(signal[8]) if isinstance(signal[8], str) else signal[8]  # quality_factors
+            outcome = signal[9]  # outcome
+            pnl = signal[10] if signal[10] else 0  # pnl
+            
+            # Extract patterns from quality_factors
+            patterns = [factor for factor in signal_data if 'PA:' in factor or 'VP:' in factor or 'Session:' in factor]
+            
+            for pattern in patterns:
+                pattern_name = pattern.split(': ')[1] if ': ' in pattern else pattern
+                
+                if pattern_name not in pattern_stats:
+                    pattern_stats[pattern_name] = {
+                        'total_signals': 0,
+                        'wins': 0,
+                        'total_pnl': 0,
+                        'outcomes': []
+                    }
+                
+                pattern_stats[pattern_name]['total_signals'] += 1
+                pattern_stats[pattern_name]['total_pnl'] += pnl
+                pattern_stats[pattern_name]['outcomes'].append(outcome)
+                
+                if outcome in ['TP_HIT', 'MANUAL_CLOSE'] and pnl > 0:
+                    pattern_stats[pattern_name]['wins'] += 1
+        except:
+            continue
+    
+    # Calculate performance metrics
+    for pattern, stats in pattern_stats.items():
+        if stats['total_signals'] > 0:
+            stats['win_rate'] = stats['wins'] / stats['total_signals']
+            stats['avg_profit'] = stats['total_pnl'] / stats['total_signals']
+            stats['accuracy'] = calculate_pattern_accuracy(stats['outcomes'])
+    
+    return pattern_stats
+
+def analyze_timeframe_performance(signals):
+    """Analyze performance by timeframe"""
+    tf_stats = {}
+    
+    for signal in signals:
+        try:
+            timeframe = signal[3] if len(signal) > 3 else '1h'  # timeframe
+            outcome = signal[9]
+            pnl = signal[10] if signal[10] else 0
+            
+            if timeframe not in tf_stats:
+                tf_stats[timeframe] = {
+                    'total_signals': 0,
+                    'wins': 0,
+                    'total_pnl': 0,
+                    'outcomes': []
+                }
+            
+            tf_stats[timeframe]['total_signals'] += 1
+            tf_stats[timeframe]['total_pnl'] += pnl
+            tf_stats[timeframe]['outcomes'].append(outcome)
+            
+            if outcome in ['TP_HIT', 'MANUAL_CLOSE'] and pnl > 0:
+                tf_stats[timeframe]['wins'] += 1
+        except:
+            continue
+    
+    # Calculate metrics
+    for tf, stats in tf_stats.items():
+        if stats['total_signals'] > 0:
+            stats['win_rate'] = stats['wins'] / stats['total_signals']
+            stats['avg_profit'] = stats['total_pnl'] / stats['total_signals']
+            stats['accuracy'] = calculate_pattern_accuracy(stats['outcomes'])
+    
+    return tf_stats
+
+def analyze_session_performance(signals):
+    """Analyze performance by market session"""
+    session_stats = {}
+    
+    for signal in signals:
+        try:
+            timestamp = signal[1]  # timestamp
+            outcome = signal[9]
+            pnl = signal[10] if signal[10] else 0
+            
+            # Determine session based on timestamp
+            hour = datetime.fromisoformat(timestamp.replace('Z', '+00:00')).hour
+            if 8 <= hour < 16:
+                session = 'London'
+            elif 13 <= hour < 21:
+                session = 'NY'
+            elif 0 <= hour < 8:
+                session = 'Asian'
+            else:
+                session = 'Other'
+            
+            if session not in session_stats:
+                session_stats[session] = {
+                    'total_signals': 0,
+                    'wins': 0,
+                    'total_pnl': 0,
+                    'outcomes': []
+                }
+            
+            session_stats[session]['total_signals'] += 1
+            session_stats[session]['total_pnl'] += pnl
+            session_stats[session]['outcomes'].append(outcome)
+            
+            if outcome in ['TP_HIT', 'MANUAL_CLOSE'] and pnl > 0:
+                session_stats[session]['wins'] += 1
+        except:
+            continue
+    
+    # Calculate metrics
+    for session, stats in session_stats.items():
+        if stats['total_signals'] > 0:
+            stats['win_rate'] = stats['wins'] / stats['total_signals']
+            stats['avg_profit'] = stats['total_pnl'] / stats['total_signals']
+            stats['accuracy'] = calculate_pattern_accuracy(stats['outcomes'])
+    
+    return session_stats
+
+def analyze_ict_performance(signals):
+    """Analyze performance by ICT/SMC concepts"""
+    ict_stats = {}
+    
+    for signal in signals:
+        try:
+            signal_data = eval(signal[8]) if isinstance(signal[8], str) else signal[8]
+            outcome = signal[9]
+            pnl = signal[10] if signal[10] else 0
+            
+            # Extract ICT concepts
+            ict_concepts = [factor for factor in signal_data if any(x in factor for x in ['SMC:', 'FVG:', 'OB:', 'Liquidity:'])]
+            
+            for concept in ict_concepts:
+                concept_name = concept.split(': ')[1] if ': ' in concept else concept
+                
+                if concept_name not in ict_stats:
+                    ict_stats[concept_name] = {
+                        'total_signals': 0,
+                        'wins': 0,
+                        'total_pnl': 0,
+                        'outcomes': [],
+                        'scores': []
+                    }
+                
+                ict_stats[concept_name]['total_signals'] += 1
+                ict_stats[concept_name]['total_pnl'] += pnl
+                ict_stats[concept_name]['outcomes'].append(outcome)
+                
+                if outcome in ['TP_HIT', 'MANUAL_CLOSE'] and pnl > 0:
+                    ict_stats[concept_name]['wins'] += 1
+        except:
+            continue
+    
+    # Calculate metrics
+    for concept, stats in ict_stats.items():
+        if stats['total_signals'] > 0:
+            stats['win_rate'] = stats['wins'] / stats['total_signals']
+            stats['avg_profit'] = stats['total_pnl'] / stats['total_signals']
+            stats['accuracy'] = calculate_pattern_accuracy(stats['outcomes'])
+            stats['avg_score'] = sum(stats['scores']) / len(stats['scores']) if stats['scores'] else 0
+    
+    return ict_stats
+
+def calculate_pattern_accuracy(outcomes):
+    """Calculate accuracy based on outcomes"""
+    if not outcomes:
+        return 0
+    
+    successful_outcomes = ['TP_HIT', 'MANUAL_CLOSE']
+    successful = sum(1 for outcome in outcomes if outcome in successful_outcomes)
+    
+    return successful / len(outcomes)
+
+def calculate_overall_stats(signals):
+    """Calculate overall performance statistics"""
+    total_signals = len(signals)
+    total_pnl = sum(signal[10] for signal in signals if signal[10])
+    wins = sum(1 for signal in signals if signal[9] in ['TP_HIT', 'MANUAL_CLOSE'] and signal[10] and signal[10] > 0)
+    
+    return {
+        'total_signals': total_signals,
+        'total_pnl': total_pnl,
+        'avg_pnl': total_pnl / total_signals if total_signals > 0 else 0,
+        'win_rate': wins / total_signals if total_signals > 0 else 0,
+        'accuracy': calculate_pattern_accuracy([signal[9] for signal in signals])
+    }
+
 def run_ml_feedback_analysis():
     """Run ML feedback analysis in background thread"""
     while monitoring_active:
@@ -763,12 +992,12 @@ def analyze_smart_money_concepts(hist_data):
         
         # Volume Profile Analysis
         volume_profile = analyze_volume_profile(hist_data)
-        if volume_profile['high_volume_nodes']:
+        if volume_profile.get('key_levels'):
             # Check if price is near high volume areas (institutional interest)
-            for node in volume_profile['high_volume_nodes']:
-                if abs(current_price - node['price']) / current_price < 0.02:  # Within 2%
+            for level in volume_profile['key_levels']:
+                if abs(current_price - level) / current_price < 0.02:  # Within 2%
                     order_flow_score += 10
-                    order_flow_patterns.append(f"High Volume Node: ${node['price']:.2f}")
+                    order_flow_patterns.append(f"High Volume Node: ${level:.2f}")
         
         # Institutional Order Flow Detection
         institutional_flow = detect_institutional_flow(hist_data)
@@ -875,6 +1104,434 @@ def analyze_smart_money_concepts(hist_data):
     except Exception as e:
         logger.error(f"Error analyzing SMC: {e}")
         return {'score': 0, 'pattern': 'ERROR'}
+
+def detect_fair_value_gaps(hist_data):
+    """Detect Fair Value Gaps (FVG) - key ICT concept"""
+    try:
+        if len(hist_data) < 3:
+            return {'score': 0, 'patterns': [], 'gaps': []}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        opens = hist_data['Open'].values
+        
+        gaps = []
+        patterns = []
+        score = 0
+        
+        # Look for FVGs in last 10 candles
+        for i in range(len(hist_data) - 2):
+            if i < 2:
+                continue
+                
+            # Bullish FVG: Gap between candle 1 high and candle 3 low
+            if (highs[i-1] < lows[i+1] and  # Gap exists
+                closes[i] > opens[i] and  # Middle candle is bullish
+                closes[i-1] < opens[i-1] and  # Previous candle is bearish
+                closes[i+1] > opens[i+1]):  # Next candle is bullish
+                
+                gap_size = lows[i+1] - highs[i-1]
+                gap_percentage = (gap_size / highs[i-1]) * 100
+                
+                if gap_percentage > 0.1:  # Minimum 0.1% gap
+                    gaps.append({
+                        'type': 'BULLISH_FVG',
+                        'price_range': (highs[i-1], lows[i+1]),
+                        'size': gap_size,
+                        'percentage': gap_percentage,
+                        'candle_index': i
+                    })
+                    score += 8
+                    patterns.append(f"Bullish FVG: {gap_percentage:.2f}%")
+            
+            # Bearish FVG: Gap between candle 1 low and candle 3 high
+            elif (lows[i-1] > highs[i+1] and  # Gap exists
+                  opens[i] > closes[i] and  # Middle candle is bearish
+                  opens[i-1] > closes[i-1] and  # Previous candle is bullish
+                  opens[i+1] > closes[i+1]):  # Next candle is bearish
+                
+                gap_size = lows[i-1] - highs[i+1]
+                gap_percentage = (gap_size / lows[i-1]) * 100
+                
+                if gap_percentage > 0.1:  # Minimum 0.1% gap
+                    gaps.append({
+                        'type': 'BEARISH_FVG',
+                        'price_range': (highs[i+1], lows[i-1]),
+                        'size': gap_size,
+                        'percentage': gap_percentage,
+                        'candle_index': i
+                    })
+                    score -= 8
+                    patterns.append(f"Bearish FVG: {gap_percentage:.2f}%")
+        
+        # Check if current price is near any FVG
+        current_price = closes[-1]
+        for gap in gaps:
+            gap_low, gap_high = gap['price_range']
+            if gap_low <= current_price <= gap_high:
+                score += 5 if gap['type'] == 'BULLISH_FVG' else -5
+                patterns.append(f"Price in {gap['type']}")
+        
+        return {
+            'score': score,
+            'patterns': patterns,
+            'gaps': gaps
+        }
+        
+    except Exception as e:
+        logger.error(f"Error detecting Fair Value Gaps: {e}")
+        return {'score': 0, 'patterns': [], 'gaps': []}
+
+def detect_enhanced_order_blocks(hist_data):
+    """Detect enhanced Order Blocks - institutional accumulation/distribution zones"""
+    try:
+        if len(hist_data) < 10:
+            return {'score': 0, 'patterns': [], 'blocks': []}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        opens = hist_data['Open'].values
+        volumes = hist_data['Volume'].values if 'Volume' in hist_data.columns else np.ones(len(closes))
+        
+        order_blocks = []
+        patterns = []
+        score = 0
+        
+        # Look for Order Blocks in last 20 candles
+        for i in range(len(hist_data) - 5):
+            if i < 5:
+                continue
+            
+            # Bullish Order Block: Strong bullish candle followed by consolidation
+            if (closes[i] > opens[i] and  # Bullish candle
+                (closes[i] - opens[i]) > (highs[i] - lows[i]) * 0.7 and  # Strong body
+                volumes[i] > np.mean(volumes[i-5:i]) * 1.5):  # High volume
+                
+                # Check for consolidation after
+                consolidation = True
+                for j in range(i+1, min(i+4, len(hist_data))):
+                    if closes[j] < opens[i]:  # Price went below the bullish candle open
+                        consolidation = False
+                        break
+                
+                if consolidation:
+                    order_blocks.append({
+                        'type': 'BULLISH_OB',
+                        'price_range': (opens[i], highs[i]),
+                        'strength': (closes[i] - opens[i]) / (highs[i] - lows[i]),
+                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                        'candle_index': i
+                    })
+                    score += 10
+                    patterns.append(f"Bullish Order Block: {((closes[i] - opens[i]) / (highs[i] - lows[i])):.2f} strength")
+            
+            # Bearish Order Block: Strong bearish candle followed by consolidation
+            elif (opens[i] > closes[i] and  # Bearish candle
+                  (opens[i] - closes[i]) > (highs[i] - lows[i]) * 0.7 and  # Strong body
+                  volumes[i] > np.mean(volumes[i-5:i]) * 1.5):  # High volume
+                
+                # Check for consolidation after
+                consolidation = True
+                for j in range(i+1, min(i+4, len(hist_data))):
+                    if closes[j] > opens[i]:  # Price went above the bearish candle open
+                        consolidation = False
+                        break
+                
+                if consolidation:
+                    order_blocks.append({
+                        'type': 'BEARISH_OB',
+                        'price_range': (lows[i], opens[i]),
+                        'strength': (opens[i] - closes[i]) / (highs[i] - lows[i]),
+                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                        'candle_index': i
+                    })
+                    score -= 10
+                    patterns.append(f"Bearish Order Block: {((opens[i] - closes[i]) / (highs[i] - lows[i])):.2f} strength")
+        
+        # Check if current price is near any Order Block
+        current_price = closes[-1]
+        for block in order_blocks:
+            block_low, block_high = block['price_range']
+            if block_low <= current_price <= block_high:
+                score += 5 if block['type'] == 'BULLISH_OB' else -5
+                patterns.append(f"Price in {block['type']}")
+        
+        return {
+            'score': score,
+            'patterns': patterns,
+            'blocks': order_blocks
+        }
+        
+    except Exception as e:
+        logger.error(f"Error detecting Order Blocks: {e}")
+        return {'score': 0, 'patterns': [], 'blocks': []}
+
+def analyze_liquidity_concepts(hist_data):
+    """Analyze liquidity concepts - sweeps, grabs, and pools"""
+    try:
+        if len(hist_data) < 10:
+            return {'score': 0, 'patterns': [], 'liquidity_events': []}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        opens = hist_data['Open'].values
+        volumes = hist_data['Volume'].values if 'Volume' in hist_data.columns else np.ones(len(closes))
+        
+        liquidity_events = []
+        patterns = []
+        score = 0
+        
+        # 1. Liquidity Sweeps - Price breaks previous high/low then reverses
+        for i in range(5, len(hist_data) - 1):
+            # Bullish Liquidity Sweep
+            if (highs[i] > max(highs[i-5:i]) and  # Breaks previous high
+                closes[i] < opens[i] and  # Bearish candle
+                volumes[i] > np.mean(volumes[i-5:i]) * 1.3):  # High volume
+                
+                liquidity_events.append({
+                    'type': 'BULLISH_LIQUIDITY_SWEEP',
+                    'price': highs[i],
+                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                    'candle_index': i
+                })
+                score += 8
+                patterns.append(f"Bullish Liquidity Sweep at ${highs[i]:.2f}")
+            
+            # Bearish Liquidity Sweep
+            elif (lows[i] < min(lows[i-5:i]) and  # Breaks previous low
+                  closes[i] > opens[i] and  # Bullish candle
+                  volumes[i] > np.mean(volumes[i-5:i]) * 1.3):  # High volume
+                
+                liquidity_events.append({
+                    'type': 'BEARISH_LIQUIDITY_SWEEP',
+                    'price': lows[i],
+                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                    'candle_index': i
+                })
+                score -= 8
+                patterns.append(f"Bearish Liquidity Sweep at ${lows[i]:.2f}")
+        
+        # 2. Equal Highs/Lows - Liquidity Pools
+        for i in range(10, len(hist_data) - 5):
+            # Equal Highs
+            if abs(highs[i] - max(highs[i-10:i])) < highs[i] * 0.001:  # Within 0.1%
+                liquidity_events.append({
+                    'type': 'EQUAL_HIGHS',
+                    'price': highs[i],
+                    'candle_index': i
+                })
+                score += 5
+                patterns.append(f"Equal Highs at ${highs[i]:.2f}")
+            
+            # Equal Lows
+            elif abs(lows[i] - min(lows[i-10:i])) < lows[i] * 0.001:  # Within 0.1%
+                liquidity_events.append({
+                    'type': 'EQUAL_LOWS',
+                    'price': lows[i],
+                    'candle_index': i
+                })
+                score += 5
+                patterns.append(f"Equal Lows at ${lows[i]:.2f}")
+        
+        # 3. Liquidity Grabs - Quick moves to grab stops
+        for i in range(3, len(hist_data) - 1):
+            # Bullish Liquidity Grab
+            if (highs[i] > highs[i-1] and  # Higher high
+                lows[i] < lows[i-1] and  # Lower low
+                closes[i] > opens[i] and  # Bullish close
+                volumes[i] > np.mean(volumes[i-3:i]) * 1.5):  # High volume
+                
+                liquidity_events.append({
+                    'type': 'BULLISH_LIQUIDITY_GRAB',
+                    'price': lows[i],
+                    'candle_index': i
+                })
+                score += 6
+                patterns.append(f"Bullish Liquidity Grab at ${lows[i]:.2f}")
+            
+            # Bearish Liquidity Grab
+            elif (highs[i] > highs[i-1] and  # Higher high
+                  lows[i] < lows[i-1] and  # Lower low
+                  opens[i] > closes[i] and  # Bearish close
+                  volumes[i] > np.mean(volumes[i-3:i]) * 1.5):  # High volume
+                
+                liquidity_events.append({
+                    'type': 'BEARISH_LIQUIDITY_GRAB',
+                    'price': highs[i],
+                    'candle_index': i
+                })
+                score -= 6
+                patterns.append(f"Bearish Liquidity Grab at ${highs[i]:.2f}")
+        
+        return {
+            'score': score,
+            'patterns': patterns,
+            'liquidity_events': liquidity_events
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing liquidity concepts: {e}")
+        return {'score': 0, 'patterns': [], 'liquidity_events': []}
+
+def analyze_news_sentiment(symbol):
+    """Analyze news sentiment and economic calendar impact"""
+    try:
+        # This would integrate with news APIs like NewsAPI, Alpha Vantage News, etc.
+        # For now, we'll create a simulated sentiment analysis
+        
+        current_time = datetime.now()
+        hour = current_time.hour
+        
+        # Simulate news sentiment based on time and symbol
+        sentiment_data = {
+            'overall_sentiment': 'NEUTRAL',
+            'sentiment_score': 0,
+            'news_impact': 'LOW',
+            'economic_events': [],
+            'market_fear_greed': 50,
+            'recommendations': []
+        }
+        
+        # Ensure sentiment_data is not None
+        if sentiment_data is None:
+            sentiment_data = {
+                'overall_sentiment': 'NEUTRAL',
+                'sentiment_score': 0,
+                'news_impact': 'LOW',
+                'economic_events': [],
+                'market_fear_greed': 50,
+                'recommendations': []
+            }
+        
+        # 1. Economic Calendar Simulation
+        economic_events = []
+        
+        # Check for major economic events (simulated)
+        if current_time.weekday() in [0, 1, 2, 3, 4]:  # Weekdays
+            if 8 <= hour < 10:  # London open
+                economic_events.append({
+                    'event': 'UK GDP Release',
+                    'impact': 'HIGH',
+                    'time': '09:00 GMT',
+                    'sentiment': 'BULLISH' if symbol.endswith('=X') else 'NEUTRAL'
+                })
+            elif 13 <= hour < 15:  # NY open
+                economic_events.append({
+                    'event': 'US CPI Data',
+                    'impact': 'HIGH',
+                    'time': '13:30 GMT',
+                    'sentiment': 'BEARISH' if 'inflation' in symbol.lower() else 'BULLISH'
+                })
+            elif 14 <= hour < 16:  # Fed time
+                economic_events.append({
+                    'event': 'Fed Interest Rate Decision',
+                    'impact': 'CRITICAL',
+                    'time': '14:00 GMT',
+                    'sentiment': 'VOLATILE'
+                })
+        
+        # 2. Market Sentiment Analysis
+        if symbol.startswith('BTC') or 'crypto' in symbol.lower():
+            # Crypto sentiment
+            sentiment_data['overall_sentiment'] = 'BULLISH'
+            sentiment_data['sentiment_score'] = 65
+            sentiment_data['market_fear_greed'] = 70
+            sentiment_data['news_impact'] = 'HIGH'
+            economic_events.append({
+                'event': 'Bitcoin ETF Approval',
+                'impact': 'HIGH',
+                'time': 'Recent',
+                'sentiment': 'BULLISH'
+            })
+        elif symbol.endswith('=X'):
+            # Forex sentiment
+            sentiment_data['overall_sentiment'] = 'BEARISH'
+            sentiment_data['sentiment_score'] = 35
+            sentiment_data['market_fear_greed'] = 30
+            sentiment_data['news_impact'] = 'MEDIUM'
+            economic_events.append({
+                'event': 'USD Strength',
+                'impact': 'MEDIUM',
+                'time': 'Ongoing',
+                'sentiment': 'BEARISH'
+            })
+        elif any(x in symbol for x in ['AAPL', 'MSFT', 'GOOGL', 'TSLA']):
+            # Tech stock sentiment
+            sentiment_data['overall_sentiment'] = 'BULLISH'
+            sentiment_data['sentiment_score'] = 75
+            sentiment_data['market_fear_greed'] = 80
+            sentiment_data['news_impact'] = 'HIGH'
+            economic_events.append({
+                'event': 'AI Technology Boom',
+                'impact': 'HIGH',
+                'time': 'Ongoing',
+                'sentiment': 'BULLISH'
+            })
+        else:
+            # General market sentiment
+            sentiment_data['overall_sentiment'] = 'NEUTRAL'
+            sentiment_data['sentiment_score'] = 50
+            sentiment_data['market_fear_greed'] = 50
+            sentiment_data['news_impact'] = 'LOW'
+        
+        # 3. Calculate sentiment impact on trading
+        sentiment_score = sentiment_data['sentiment_score']
+        news_impact = sentiment_data['news_impact']
+        
+        # Adjust sentiment based on economic events
+        for event in economic_events:
+            if event['impact'] == 'CRITICAL':
+                sentiment_score += 20 if event['sentiment'] == 'BULLISH' else -20
+            elif event['impact'] == 'HIGH':
+                sentiment_score += 15 if event['sentiment'] == 'BULLISH' else -15
+            elif event['impact'] == 'MEDIUM':
+                sentiment_score += 10 if event['sentiment'] == 'BULLISH' else -10
+        
+        # Clamp sentiment score between 0-100
+        sentiment_score = max(0, min(100, sentiment_score))
+        
+        # 4. Generate trading recommendations based on sentiment
+        recommendations = []
+        if sentiment_score > 70:
+            recommendations.append("Strong Bullish Sentiment - Consider Long Positions")
+            sentiment_data['overall_sentiment'] = 'BULLISH'
+        elif sentiment_score > 60:
+            recommendations.append("Moderate Bullish Sentiment - Favor Long Bias")
+            sentiment_data['overall_sentiment'] = 'BULLISH'
+        elif sentiment_score < 30:
+            recommendations.append("Strong Bearish Sentiment - Consider Short Positions")
+            sentiment_data['overall_sentiment'] = 'BEARISH'
+        elif sentiment_score < 40:
+            recommendations.append("Moderate Bearish Sentiment - Favor Short Bias")
+            sentiment_data['overall_sentiment'] = 'BEARISH'
+        else:
+            recommendations.append("Neutral Sentiment - Wait for Clear Direction")
+            sentiment_data['overall_sentiment'] = 'NEUTRAL'
+        
+        # Add news impact warnings
+        if news_impact == 'CRITICAL':
+            recommendations.append("⚠️ CRITICAL NEWS EVENT - High Volatility Expected")
+        elif news_impact == 'HIGH':
+            recommendations.append("📰 High Impact News - Monitor Closely")
+        
+        sentiment_data['sentiment_score'] = sentiment_score
+        sentiment_data['economic_events'] = economic_events
+        sentiment_data['recommendations'] = recommendations
+        
+        return {
+            'score': (sentiment_score - 50) * 0.5,  # Convert to -25 to +25 range
+            'sentiment_data': sentiment_data,
+            'patterns': [f"Sentiment: {sentiment_data['overall_sentiment']}", 
+                        f"Impact: {news_impact}",
+                        f"Fear/Greed: {sentiment_data['market_fear_greed']}"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing news sentiment: {e}")
+        return {'score': 0, 'sentiment_data': {}, 'patterns': []}
 
 def analyze_price_action_patterns(hist_data):
     """Comprehensive price action analysis with candlestick patterns and rejection analysis"""
@@ -1037,6 +1694,71 @@ def detect_advanced_candlestick_patterns(hist_data):
             score += 2
             patterns.append("Pin Bar (Bullish)")
             signals.append("BULLISH_REJECTION")
+        
+        # 9. THREE WHITE SOLDIERS (Strong Bullish)
+        if (len(close_prices) >= 3 and
+            c3 > o3 and c2 > o2 and c1 > o1 and  # All bullish
+            c1 > c2 > c3 and  # Each close higher
+            body1 > body2 > body3):  # Increasing strength
+            score += 5
+            patterns.append("Three White Soldiers")
+            signals.append("STRONG_BULLISH")
+        
+        # 10. THREE BLACK CROWS (Strong Bearish)
+        if (len(close_prices) >= 3 and
+            o3 > c3 and o2 > c2 and o1 > c1 and  # All bearish
+            c1 < c2 < c3 and  # Each close lower
+            body1 > body2 > body3):  # Increasing strength
+            score -= 5
+            patterns.append("Three Black Crows")
+            signals.append("STRONG_BEARISH")
+        
+        # 11. MORNING STAR (Bullish Reversal)
+        if (len(close_prices) >= 3 and
+            o3 > c3 and  # First bearish
+            abs(c2 - o2) < (h2 - l2) * 0.3 and  # Second small body
+            c1 > o1 and  # Third bullish
+            c1 > (o3 + c3) / 2):  # Third close above first midpoint
+            score += 4
+            patterns.append("Morning Star")
+            signals.append("BULLISH_REVERSAL")
+        
+        # 12. EVENING STAR (Bearish Reversal)
+        if (len(close_prices) >= 3 and
+            c3 > o3 and  # First bullish
+            abs(c2 - o2) < (h2 - l2) * 0.3 and  # Second small body
+            o1 > c1 and  # Third bearish
+            c1 < (o3 + c3) / 2):  # Third close below first midpoint
+            score -= 4
+            patterns.append("Evening Star")
+            signals.append("BEARISH_REVERSAL")
+        
+        # 13. DRAGONFLY DOJI (Bullish Reversal)
+        if (body1 < total_range1 * 0.1 and  # Small body
+            lower_shadow1 > total_range1 * 0.6 and  # Long lower shadow
+            upper_shadow1 < total_range1 * 0.1):  # Small upper shadow
+            score += 3
+            patterns.append("Dragonfly Doji")
+            signals.append("BULLISH_REVERSAL")
+        
+        # 14. GRAVESTONE DOJI (Bearish Reversal)
+        if (body1 < total_range1 * 0.1 and  # Small body
+            upper_shadow1 > total_range1 * 0.6 and  # Long upper shadow
+            lower_shadow1 < total_range1 * 0.1):  # Small lower shadow
+            score -= 3
+            patterns.append("Gravestone Doji")
+            signals.append("BEARISH_REVERSAL")
+        
+        # 15. MARUBOZU (Strong Trend)
+        if body1 > total_range1 * 0.8:  # Large body
+            if c1 > o1:  # Bullish Marubozu
+                score += 3
+                patterns.append("Bullish Marubozu")
+                signals.append("STRONG_BULLISH")
+            else:  # Bearish Marubozu
+                score -= 3
+                patterns.append("Bearish Marubozu")
+                signals.append("STRONG_BEARISH")
         
         # Volume confirmation
         avg_volume = np.mean(volume[-5:])
@@ -1273,6 +1995,211 @@ def analyze_volume_price_action(hist_data):
         logger.error(f"Error in volume price action analysis: {e}")
         return {'score': 0, 'patterns': [], 'signals': []}
 
+def analyze_volume_profile(hist_data):
+    """Analyze Volume Profile to identify key trading levels"""
+    try:
+        if len(hist_data) < 50:
+            return {'score': 0, 'key_levels': [], 'patterns': []}
+        
+        # Get recent data (last 50 periods for volume profile)
+        recent_data = hist_data.tail(50)
+        volume = recent_data['Volume'].values if 'Volume' in recent_data.columns else np.ones(len(recent_data))
+        high = recent_data['High'].values
+        low = recent_data['Low'].values
+        close = recent_data['Close'].values
+        
+        # Calculate Volume Profile
+        price_range = high.max() - low.min()
+        num_bins = 20  # 20 price levels
+        bin_size = price_range / num_bins
+        
+        # Create volume profile bins
+        volume_profile = {}
+        for i in range(num_bins):
+            price_level = low.min() + (i * bin_size)
+            volume_profile[price_level] = 0
+        
+        # Distribute volume across price levels
+        for i in range(len(recent_data)):
+            price_level = int((high[i] - low.min()) / bin_size)
+            if 0 <= price_level < num_bins:
+                level = low.min() + (price_level * bin_size)
+                volume_profile[level] += volume[i]
+        
+        # Find key levels (high volume areas)
+        sorted_levels = sorted(volume_profile.items(), key=lambda x: x[1], reverse=True)
+        total_volume = sum(volume_profile.values())
+        
+        key_levels = []
+        patterns = []
+        score = 0
+        
+        # Top 3 volume levels
+        for i, (level, vol) in enumerate(sorted_levels[:3]):
+            volume_percentage = (vol / total_volume) * 100
+            if volume_percentage > 5:  # More than 5% of total volume
+                key_levels.append({
+                    'price': round(level, 2),
+                    'volume_percentage': round(volume_percentage, 1),
+                    'strength': 'High' if volume_percentage > 10 else 'Medium'
+                })
+                
+                # Check if current price is near this level
+                current_price = close[-1]
+                if abs(current_price - level) / current_price < 0.02:  # Within 2%
+                    patterns.append(f"Price at High Volume Level ({volume_percentage:.1f}%)")
+                    score += 10 if volume_percentage > 10 else 5
+        
+        # Volume Profile Patterns
+        if len(key_levels) >= 2:
+            # Check for Volume Profile patterns
+            levels = [level['price'] for level in key_levels]
+            current_price = close[-1]
+            
+            # POC (Point of Control) - highest volume level
+            poc_level = key_levels[0]['price']
+            
+            if current_price > poc_level:
+                patterns.append("Price Above POC - Bullish Bias")
+                score += 8
+            elif current_price < poc_level:
+                patterns.append("Price Below POC - Bearish Bias")
+                score -= 8
+            
+            # Value Area (70% of volume)
+            value_area_volume = sum([level['volume_percentage'] for level in key_levels[:5]])
+            if value_area_volume > 70:
+                patterns.append("Strong Value Area Formation")
+                score += 5
+        
+        return {
+            'score': score,
+            'key_levels': key_levels,
+            'patterns': patterns,
+            'poc_level': key_levels[0]['price'] if key_levels else None,
+            'value_area_strength': len([l for l in key_levels if l['volume_percentage'] > 5])
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in volume profile analysis: {e}")
+        return {'score': 0, 'key_levels': [], 'patterns': []}
+
+def analyze_market_sessions(hist_data):
+    """Analyze market sessions (London, NY, Asian) for trading opportunities"""
+    try:
+        if len(hist_data) < 20:
+            return {'score': 0, 'session_analysis': {}, 'patterns': []}
+        
+        # Get current time and session info
+        current_time = datetime.now()
+        current_hour = current_time.hour
+        
+        # Define market sessions (UTC times)
+        sessions = {
+            'Asian': {'start': 0, 'end': 8, 'name': 'Asian Session'},
+            'London': {'start': 8, 'end': 16, 'name': 'London Session'},
+            'NY': {'start': 13, 'end': 21, 'name': 'New York Session'},
+            'Overlap': {'start': 13, 'end': 16, 'name': 'London-NY Overlap'}
+        }
+        
+        # Determine current session
+        current_session = None
+        for session_name, session_info in sessions.items():
+            if session_info['start'] <= current_hour < session_info['end']:
+                current_session = session_name
+                break
+        
+        if not current_session:
+            current_session = 'Asian'  # Default to Asian if outside main sessions
+        
+        # Analyze session-specific patterns
+        recent_data = hist_data.tail(20)
+        volume = recent_data['Volume'].values if 'Volume' in recent_data.columns else np.ones(len(recent_data))
+        close_prices = recent_data['Close'].values
+        high_prices = recent_data['High'].values
+        low_prices = recent_data['Low'].values
+        
+        score = 0
+        patterns = []
+        session_analysis = {}
+        
+        # Calculate session-specific metrics
+        avg_volume = np.mean(volume)
+        current_volume = volume[-1]
+        price_change = (close_prices[-1] - close_prices[-2]) / close_prices[-2] if len(close_prices) > 1 else 0
+        
+        # Session-specific analysis
+        if current_session == 'London':
+            # London session - high volatility, trend continuation
+            if current_volume > avg_volume * 1.3:
+                score += 8
+                patterns.append("High London Volume - Strong Move Expected")
+            
+            # London breakout patterns
+            if abs(price_change) > 0.01:  # 1% move
+                score += 5
+                patterns.append("London Session Breakout")
+                
+        elif current_session == 'NY':
+            # NY session - institutional activity, trend confirmation
+            if current_volume > avg_volume * 1.5:
+                score += 10
+                patterns.append("High NY Volume - Institutional Activity")
+            
+            # NY trend confirmation
+            if abs(price_change) > 0.015:  # 1.5% move
+                score += 8
+                patterns.append("NY Session Trend Confirmation")
+                
+        elif current_session == 'Overlap':
+            # London-NY overlap - highest volatility
+            if current_volume > avg_volume * 1.8:
+                score += 12
+                patterns.append("Overlap High Volume - Maximum Volatility")
+            
+            # Overlap breakout
+            if abs(price_change) > 0.02:  # 2% move
+                score += 10
+                patterns.append("Overlap Session Breakout")
+                
+        elif current_session == 'Asian':
+            # Asian session - consolidation, range trading
+            if current_volume < avg_volume * 0.8:
+                score += 3
+                patterns.append("Low Asian Volume - Consolidation Phase")
+            
+            # Asian range trading
+            price_range = (high_prices[-1] - low_prices[-1]) / close_prices[-1]
+            if price_range < 0.01:  # Less than 1% range
+                score += 2
+                patterns.append("Asian Range Trading")
+        
+        # Session-specific signals
+        session_signals = []
+        if current_session in ['London', 'NY', 'Overlap']:
+            if price_change > 0.01:
+                session_signals.append(f"BULLISH_{current_session.upper()}")
+            elif price_change < -0.01:
+                session_signals.append(f"BEARISH_{current_session.upper()}")
+        
+        session_analysis = {
+            'current_session': current_session,
+            'session_name': sessions[current_session]['name'],
+            'volume_ratio': round(current_volume / avg_volume, 2),
+            'price_change': round(price_change * 100, 2),
+            'signals': session_signals
+        }
+        
+        return {
+            'score': score,
+            'session_analysis': session_analysis,
+            'patterns': patterns
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in market session analysis: {e}")
+        return {'score': 0, 'session_analysis': {}, 'patterns': []}
+
 def analyze_breakout_confirmation(hist_data):
     """Analyze breakout patterns with price action confirmation"""
     try:
@@ -1422,6 +2349,42 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             signal_score += smc_score
             quality_factors.append(f"SMC: {smc_analysis.get('pattern', 'N/A')}")
         
+        # 2.1. Fair Value Gaps (FVG) - NEW!
+        fvg_analysis = detect_fair_value_gaps(hist_data)
+        fvg_score = fvg_analysis.get('score', 0)
+        fvg_patterns = fvg_analysis.get('patterns', [])
+        if fvg_score != 0:
+            signal_score += fvg_score
+            quality_factors.extend([f"FVG: {pattern}" for pattern in fvg_patterns[:2]])
+        
+        # 2.2. Enhanced Order Blocks - NEW!
+        order_blocks = detect_enhanced_order_blocks(hist_data)
+        ob_score = order_blocks.get('score', 0)
+        ob_patterns = order_blocks.get('patterns', [])
+        if ob_score != 0:
+            signal_score += ob_score
+            quality_factors.extend([f"OB: {pattern}" for pattern in ob_patterns[:2]])
+        
+        # 2.3. Liquidity Concepts - NEW!
+        liquidity_analysis = analyze_liquidity_concepts(hist_data)
+        liq_score = liquidity_analysis.get('score', 0)
+        liq_patterns = liquidity_analysis.get('patterns', [])
+        if liq_score != 0:
+            signal_score += liq_score
+            quality_factors.extend([f"Liquidity: {pattern}" for pattern in liq_patterns[:2]])
+        
+        # 2.4. NEWS SENTIMENT ANALYSIS - NEW!
+        news_sentiment = analyze_news_sentiment(symbol)
+        if news_sentiment is None:
+            news_sentiment = {'score': 0, 'patterns': [], 'sentiment_data': {}}
+        sentiment_score = news_sentiment.get('score', 0)
+        sentiment_patterns = news_sentiment.get('patterns', [])
+        sentiment_data = news_sentiment.get('sentiment_data', {})
+        
+        if sentiment_score != 0:
+            signal_score += sentiment_score
+            quality_factors.extend([f"News: {pattern}" for pattern in sentiment_patterns[:2]])
+        
         # 3. MULTI-TIMEFRAME CONFIRMATION - Critical for quality
         mtf_score = multi_timeframe_analysis.get('consensus_score', 0)
         mtf_direction = multi_timeframe_analysis.get('consensus_direction', 'NEUTRAL')
@@ -1465,7 +2428,7 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
                 signal_score -= 5  # Reduced penalty without MTF confirmation
                 quality_factors.append(f"RSI Overbought: {rsi} (No MTF Confirmation)")
         elif 30 <= rsi <= 70:  # Neutral zone
-            signal_score += 5  # Small bonus for neutral RSI
+            signal_score += 0  # No bias for neutral RSI
         
         # Bollinger Bands - Only extreme positions
         if bb_position < 0.15:  # Very near lower band
@@ -1493,6 +2456,26 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             signal_score += pa_score
             quality_factors.extend([f"PA: {pattern}" for pattern in pa_patterns[:3]])  # Top 3 patterns
         
+        # 4.5. VOLUME PROFILE ANALYSIS - NEW!
+        volume_profile_analysis = analyze_volume_profile(hist_data)
+        vp_score = volume_profile_analysis.get('score', 0)
+        vp_patterns = volume_profile_analysis.get('patterns', [])
+        vp_key_levels = volume_profile_analysis.get('key_levels', [])
+        
+        if vp_score != 0:
+            signal_score += vp_score
+            quality_factors.extend([f"VP: {pattern}" for pattern in vp_patterns[:2]])  # Top 2 patterns
+        
+        # 4.6. MARKET SESSION ANALYSIS - NEW!
+        session_analysis = analyze_market_sessions(hist_data)
+        session_score = session_analysis.get('score', 0)
+        session_patterns = session_analysis.get('patterns', [])
+        session_data = session_analysis.get('session_analysis', {})
+        
+        if session_score != 0:
+            signal_score += session_score
+            quality_factors.extend([f"Session: {pattern}" for pattern in session_patterns[:2]])  # Top 2 patterns
+        
         # 5. Volume Analysis - Critical for quality
         volume = hist_data['Volume'].iloc[-1] if 'Volume' in hist_data.columns else 0
         avg_volume = hist_data['Volume'].rolling(20).mean().iloc[-1] if 'Volume' in hist_data.columns else 0
@@ -1514,21 +2497,24 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             signal_score -= 10
             quality_factors.append("Below SMA20")
         
-        # 7. STRICT Signal Determination - Much higher thresholds
-        min_confidence = 65  # Minimum confidence for any signal
-        strong_threshold = 80  # Strong signal threshold
+        # 7. Signal Determination - Balanced quality for profitable trading
+        min_confidence = 55  # Balanced minimum confidence for quality signals
+        strong_threshold = 75  # Strong signal threshold
         
-        # FINAL MTF CONFLICT CHECK - Reject signals with high neutral consensus
-        if mtf_direction == 'NEUTRAL' and mtf_confidence > 70:
-            quality_factors.append("🚨 REJECTED: High Neutral MTF Consensus")
+        # DEBUG: Log signal score for debugging
+        logger.info(f"Signal Debug for {symbol}: Score={signal_score}, MTF={mtf_direction} ({mtf_confidence}%), PA={pa_score}")
+        
+        # FINAL MTF CONFLICT CHECK - Only reject if very high neutral consensus
+        if mtf_direction == 'NEUTRAL' and mtf_confidence > 90:
+            quality_factors.append("🚨 REJECTED: Very High Neutral MTF Consensus")
             return None
         
-        if signal_score >= 40:  # Balanced threshold for BUY
+        if signal_score >= 15:  # Lower threshold for BUY
             signal_type = "BUY"
-            confidence = min(95, 60 + (signal_score - 40) * 0.8)
-        elif signal_score <= -40:  # Balanced threshold for SELL
+            confidence = min(95, 55 + (signal_score - 15) * 1.2)
+        elif signal_score <= -15:  # Lower threshold for SELL
             signal_type = "SELL"
-            confidence = min(95, 60 + abs(signal_score + 40) * 0.8)
+            confidence = min(95, 55 + abs(signal_score + 15) * 1.2)
         else:
             # No signal if not strong enough
             return None
@@ -1567,9 +2553,15 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             'volume_ratio': round(volume_ratio, 2),
             'kill_zone': kill_zone_analysis,
             'smc_analysis': smc_analysis,
+            'fvg_analysis': fvg_analysis,  # NEW: Fair Value Gaps
+            'order_blocks': order_blocks,  # NEW: Enhanced Order Blocks
+            'liquidity_analysis': liquidity_analysis,  # NEW: Liquidity Concepts
+            'news_sentiment': news_sentiment,  # NEW: News sentiment analysis
             'technical_indicators': technical_indicators,
             'multi_timeframe': multi_timeframe_analysis,
             'price_action': price_action_analysis,  # NEW: Price action analysis
+            'volume_profile': volume_profile_analysis,  # NEW: Volume profile analysis
+            'market_session': session_analysis,  # NEW: Market session analysis
             'timestamp': datetime.now().isoformat()
         }
         
@@ -1597,7 +2589,7 @@ def generate_basic_analysis(symbol, hist_data, info, current_price, previous_clo
         bb_position = technical_indicators.get('bb_position', 0.5)
         macd = technical_indicators.get('macd', 0)
         
-        # Simple signal logic
+        # Simple signal logic with same confidence requirements
         if rsi < 40:
             signal_type = "BUY"
             confidence = 45
@@ -1607,6 +2599,11 @@ def generate_basic_analysis(symbol, hist_data, info, current_price, previous_clo
         else:
             signal_type = "HOLD"
             confidence = 40
+        
+        # Apply lower minimum confidence for basic analysis (fallback)
+        min_confidence = 30  # Lower threshold for basic analysis
+        if confidence < min_confidence:
+            return None  # Reject very low-confidence signals
         
         # Calculate basic price targets
         atr = hist_data['High'].rolling(14).max() - hist_data['Low'].rolling(14).min()
@@ -2538,6 +3535,23 @@ async def get_main_page():
                         <div style="margin-top: 8px; font-size: 12px; color: #ccc;">
                             Current: $${currentPrice.toFixed(2)} | Score: ${Math.round(signalScore)}
                         </div>
+                        ${signal.news_sentiment && signal.news_sentiment.sentiment_data ? `
+                        <div style="margin-top: 10px; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; font-size: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span><strong>📰 Sentiment:</strong> ${signal.news_sentiment.sentiment_data.overall_sentiment}</span>
+                                <span><strong>Impact:</strong> ${signal.news_sentiment.sentiment_data.news_impact}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span><strong>Score:</strong> ${signal.news_sentiment.sentiment_data.sentiment_score}/100</span>
+                                <span><strong>Fear/Greed:</strong> ${signal.news_sentiment.sentiment_data.market_fear_greed}</span>
+                            </div>
+                            ${signal.news_sentiment.sentiment_data.economic_events && signal.news_sentiment.sentiment_data.economic_events.length > 0 ? `
+                            <div style="margin-top: 5px; font-size: 11px; color: #FFD700;">
+                                <strong>📅 Events:</strong> ${signal.news_sentiment.sentiment_data.economic_events.map(e => e.event).join(', ')}
+                            </div>
+                            ` : ''}
+                        </div>
+                        ` : ''}
                     </div>
                 `;
             });
@@ -2696,6 +3710,25 @@ async def analyze_symbol(symbol: str):
         if not analysis:
             # If no high-quality signal, provide basic analysis instead of error
             analysis = generate_basic_analysis(symbol, hist, info, current_price, previous_close, volume, market_cap)
+        
+        # Safety check - if analysis is still None, create a minimal response
+        if not analysis:
+            analysis = {
+                'symbol': symbol,
+                'signal': 'HOLD',
+                'confidence': 0,
+                'current_price': current_price,
+                'target_price': current_price,
+                'stop_loss': current_price,
+                'signal_score': 0,
+                'quality_factors': ['Insufficient data for analysis'],
+                'risk_reward': 0,
+                'volume_ratio': 1,
+                'technical_indicators': {},
+                'multi_timeframe': {},
+                'price_action': {},
+                'timestamp': datetime.now().isoformat()
+            }
         
         # Add live market data to analysis
         analysis['live_price'] = current_price
@@ -2974,12 +4007,23 @@ def perform_multi_timeframe_analysis(symbol):
     try:
         ticker = yf.Ticker(symbol)
         
-        # Define timeframes with their weights (higher = more important)
+        # Define timeframes with professional trading approach (HTF to LTF)
         timeframes = {
-            '1d': {'period': '3mo', 'interval': '1d', 'weight': 0.4},      # Daily trend
-            '4h': {'period': '1mo', 'interval': '4h', 'weight': 0.3},      # Market structure
-            '1h': {'period': '5d', 'interval': '1h', 'weight': 0.2},       # Setup identification
-            '15m': {'period': '2d', 'interval': '15m', 'weight': 0.1}      # Entry confirmation
+            # HIGHER TIMEFRAMES - Trend Bias (Most Important)
+            '12M': {'period': '2y', 'interval': '1mo', 'weight': 0.25},     # Long-term trend bias
+            '6M': {'period': '1y', 'interval': '1mo', 'weight': 0.20},      # Major trend confirmation
+            '3M': {'period': '6mo', 'interval': '1wk', 'weight': 0.15},     # Quarterly trend
+            '1M': {'period': '3mo', 'interval': '1wk', 'weight': 0.10},     # Monthly trend
+            
+            # MEDIUM TIMEFRAMES - Structure & Setup
+            '1W': {'period': '2mo', 'interval': '1wk', 'weight': 0.10},     # Weekly structure
+            '1d': {'period': '3mo', 'interval': '1d', 'weight': 0.08},      # Daily bias
+            '4h': {'period': '1mo', 'interval': '4h', 'weight': 0.07},      # Market structure
+            
+            # LOWER TIMEFRAMES - Entry Timing
+            '1h': {'period': '5d', 'interval': '1h', 'weight': 0.03},       # Setup identification
+            '15m': {'period': '2d', 'interval': '15m', 'weight': 0.02},     # Entry confirmation
+            '5m': {'period': '1d', 'interval': '5m', 'weight': 0.01}        # Precise entry timing
         }
         
         timeframe_signals = {}
@@ -3108,13 +4152,39 @@ def analyze_timeframe(hist_data, timeframe):
         signal = 'HOLD'
         confidence = 50
         
-        if timeframe == '1d':  # Daily - trend direction
+        # HIGHER TIMEFRAMES - Trend Bias Analysis (Most Important)
+        if timeframe in ['12M', '6M', '3M', '1M']:  # Long-term trend bias
+            if trend == 'BULLISH':
+                signal = 'BUY'
+                confidence = 85 if timeframe == '12M' else 80 if timeframe == '6M' else 75
+            elif trend == 'BEARISH':
+                signal = 'SELL'
+                confidence = 85 if timeframe == '12M' else 80 if timeframe == '6M' else 75
+            else:
+                signal = 'HOLD'
+                confidence = 70
+                
+        elif timeframe == '1W':  # Weekly structure
+            if trend == 'BULLISH' and current_rsi < 70:
+                signal = 'BUY'
+                confidence = 75
+            elif trend == 'BEARISH' and current_rsi > 30:
+                signal = 'SELL'
+                confidence = 75
+            else:
+                signal = 'HOLD'
+                confidence = 70
+                
+        elif timeframe == '1d':  # Daily - trend direction
             if trend == 'BULLISH' and current_rsi < 70:
                 signal = 'BUY'
                 confidence = 70
             elif trend == 'BEARISH' and current_rsi > 30:
                 signal = 'SELL'
                 confidence = 70
+            else:
+                signal = 'HOLD'
+                confidence = 65
                 
         elif timeframe == '4h':  # 4H - market structure
             if trend == 'BULLISH' and current_macd > current_macd_signal:
@@ -3123,6 +4193,9 @@ def analyze_timeframe(hist_data, timeframe):
             elif trend == 'BEARISH' and current_macd < current_macd_signal:
                 signal = 'SELL'
                 confidence = 65
+            else:
+                signal = 'HOLD'
+                confidence = 60
                 
         elif timeframe == '1h':  # 1H - setup identification
             if current_rsi < 30 and current_macd > current_macd_signal:
@@ -3131,6 +4204,9 @@ def analyze_timeframe(hist_data, timeframe):
             elif current_rsi > 70 and current_macd < current_macd_signal:
                 signal = 'SELL'
                 confidence = 60
+            else:
+                signal = 'HOLD'
+                confidence = 55
                 
         elif timeframe == '15m':  # 15m - entry confirmation
             if current_rsi < 40 and current_price > current_sma_20:
@@ -3139,6 +4215,20 @@ def analyze_timeframe(hist_data, timeframe):
             elif current_rsi > 60 and current_price < current_sma_20:
                 signal = 'SELL'
                 confidence = 55
+            else:
+                signal = 'HOLD'
+                confidence = 50
+                
+        elif timeframe == '5m':  # 5m - precise entry timing
+            if current_rsi < 35 and current_price > current_sma_20:
+                signal = 'BUY'
+                confidence = 50
+            elif current_rsi > 65 and current_price < current_sma_20:
+                signal = 'SELL'
+                confidence = 50
+            else:
+                signal = 'HOLD'
+                confidence = 45
         
         return {
             'signal': signal,
@@ -3154,46 +4244,6 @@ def analyze_timeframe(hist_data, timeframe):
         return None
 
 # ===== ADVANCED ORDER FLOW, MARKET STRUCTURE, AND POI FUNCTIONS =====
-
-def analyze_volume_profile(hist_data):
-    """Analyze volume profile to find high volume nodes (institutional interest)"""
-    try:
-        if 'Volume' not in hist_data.columns or len(hist_data) < 20:
-            return {'high_volume_nodes': []}
-        
-        # Create price bins
-        price_range = hist_data['High'].max() - hist_data['Low'].min()
-        bin_size = price_range / 20  # 20 price levels
-        
-        volume_profile = {}
-        
-        for _, row in hist_data.iterrows():
-            price_bin = round(row['Low'] / bin_size) * bin_size
-            if price_bin not in volume_profile:
-                volume_profile[price_bin] = 0
-            volume_profile[price_bin] += row['Volume']
-        
-        # Find high volume nodes (top 20% of volume)
-        if volume_profile:
-            max_volume = max(volume_profile.values())
-            threshold = max_volume * 0.2
-            
-            high_volume_nodes = []
-            for price, volume in volume_profile.items():
-                if volume >= threshold:
-                    high_volume_nodes.append({
-                        'price': price,
-                        'volume': volume,
-                        'strength': volume / max_volume
-                    })
-            
-            return {'high_volume_nodes': high_volume_nodes}
-        
-        return {'high_volume_nodes': []}
-        
-    except Exception as e:
-        logger.error(f"Error analyzing volume profile: {e}")
-        return {'high_volume_nodes': []}
 
 def detect_institutional_flow(hist_data):
     """Detect institutional order flow patterns"""
