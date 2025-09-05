@@ -7,15 +7,12 @@ Combines clean interface with all advanced ICT/SMC and ML features
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import json
-import asyncio
 import logging
-import math
 import sqlite3
 import threading
 import time
@@ -32,6 +29,1739 @@ except ImportError:
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def clean_nan_values(obj):
+    """Recursively clean NaN values from dictionaries and lists for JSON serialization"""
+    if isinstance(obj, dict):
+        return {k: clean_nan_values(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nan_values(item) for item in obj]
+    elif isinstance(obj, (np.floating, np.integer)):
+        if np.isnan(obj) or np.isinf(obj):
+            return 0
+        return float(obj)
+    elif isinstance(obj, float):
+        if np.isnan(obj) or np.isinf(obj):
+            return 0
+        return obj
+    else:
+        return obj
+
+def get_multi_timeframe_data(symbol):
+    """Get comprehensive multi-timeframe data for ICT/SMC analysis"""
+    try:
+        ticker = yf.Ticker(symbol)
+        
+        # Define timeframes from higher to lower
+        timeframes = {
+            '12mo': {'period': '1y', 'interval': '1mo'},
+            '6mo': {'period': '6mo', 'interval': '1mo'}, 
+            '3mo': {'period': '3mo', 'interval': '1wk'},
+            '1mo': {'period': '1mo', 'interval': '1wk'},
+            '1w': {'period': '1mo', 'interval': '1d'},
+            '1d': {'period': '5d', 'interval': '1d'},
+            '4h': {'period': '5d', 'interval': '4h'},
+            '1h': {'period': '5d', 'interval': '1h'},
+            '15m': {'period': '1d', 'interval': '15m'},
+            '5m': {'period': '1d', 'interval': '5m'}
+        }
+        
+        mtf_data = {}
+        
+        for tf_name, tf_config in timeframes.items():
+            try:
+                data = ticker.history(period=tf_config['period'], interval=tf_config['interval'])
+                if not data.empty and len(data) >= 10:
+                    mtf_data[tf_name] = {
+                        'data': data,
+                        'trend': analyze_trend_direction(data),
+                        'key_levels': find_key_levels(data),
+                        'market_structure': analyze_market_structure(data),
+                        'volume_profile': analyze_volume_profile(data)
+                    }
+            except Exception as e:
+                logger.warning(f"Could not fetch {tf_name} data for {symbol}: {e}")
+                continue
+        
+        return mtf_data
+    except Exception as e:
+        logger.error(f"Error getting multi-timeframe data for {symbol}: {e}")
+        return {}
+
+def analyze_trend_direction(data):
+    """Analyze trend direction using ICT/SMC principles"""
+    try:
+        if len(data) < 20:
+            return 'NEUTRAL'
+        
+        # Get recent highs and lows
+        recent_highs = data['High'].tail(20)
+        recent_lows = data['Low'].tail(20)
+        
+        # Check for higher highs and higher lows (uptrend)
+        if (recent_highs.iloc[-1] > recent_highs.iloc[-10] and 
+            recent_lows.iloc[-1] > recent_lows.iloc[-10]):
+            return 'BULLISH'
+        
+        # Check for lower highs and lower lows (downtrend)
+        elif (recent_highs.iloc[-1] < recent_highs.iloc[-10] and 
+              recent_lows.iloc[-1] < recent_lows.iloc[-10]):
+            return 'BEARISH'
+        
+        return 'NEUTRAL'
+    except Exception as e:
+        logger.error(f"Error analyzing trend direction: {e}")
+        return 'NEUTRAL'
+
+def find_key_levels(data):
+    """Find key support/resistance levels using ICT/SMC principles"""
+    try:
+        if len(data) < 50:
+            return []
+        
+        # Get swing highs and lows
+        highs = data['High'].values
+        lows = data['Low'].values
+        
+        key_levels = []
+        
+        # Find swing highs (resistance)
+        for i in range(2, len(highs) - 2):
+            if (highs[i] > highs[i-1] and highs[i] > highs[i-2] and 
+                highs[i] > highs[i+1] and highs[i] > highs[i+2]):
+                key_levels.append({
+                    'price': highs[i],
+                    'type': 'RESISTANCE',
+                    'strength': calculate_level_strength(highs[i], data)
+                })
+        
+        # Find swing lows (support)
+        for i in range(2, len(lows) - 2):
+            if (lows[i] < lows[i-1] and lows[i] < lows[i-2] and 
+                lows[i] < lows[i+1] and lows[i] < lows[i+2]):
+                key_levels.append({
+                    'price': lows[i],
+                    'type': 'SUPPORT',
+                    'strength': calculate_level_strength(lows[i], data)
+                })
+        
+        # Sort by strength and return top 5
+        key_levels.sort(key=lambda x: x['strength'], reverse=True)
+        return key_levels[:5]
+        
+    except Exception as e:
+        logger.error(f"Error finding key levels: {e}")
+        return []
+
+def calculate_level_strength(price, data):
+    """Calculate strength of a key level based on touches and volume"""
+    try:
+        touches = 0
+        total_volume = 0
+        
+        for i in range(len(data)):
+            if abs(data['High'].iloc[i] - price) / price < 0.005:  # Within 0.5%
+                touches += 1
+                total_volume += data['Volume'].iloc[i] if 'Volume' in data.columns else 1
+        
+        return touches * (total_volume / len(data)) if len(data) > 0 else 0
+    except:
+        return 0
+
+def analyze_market_structure(data):
+    """Enhanced ICT Market Structure analysis for BOS/CHoCH detection"""
+    try:
+        if len(data) < 100:
+            return {'bos': False, 'choch': False, 'structure': 'NEUTRAL', 'swing_points': [], 'structure_shift': False}
+        
+        # Get swing highs and lows using proper ICT methodology
+        swing_points = find_swing_points_ict(data)
+        
+        if len(swing_points) < 4:
+            return {'bos': False, 'choch': False, 'structure': 'NEUTRAL', 'swing_points': swing_points, 'structure_shift': False}
+        
+        # Analyze for Break of Structure (BOS)
+        bos_analysis = detect_bos(swing_points, data)
+        
+        # Analyze for Change of Character (CHoCH)
+        choch_analysis = detect_choch(swing_points, data)
+        
+        # Determine overall structure
+        structure = determine_market_structure(swing_points, bos_analysis, choch_analysis)
+        
+        return {
+            'bos': bos_analysis['detected'],
+            'choch': choch_analysis['detected'],
+            'structure': structure,
+            'swing_points': swing_points[-10:],  # Last 10 swing points
+            'structure_shift': bos_analysis['detected'] or choch_analysis['detected'],
+            'bos_details': bos_analysis,
+            'choch_details': choch_analysis
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing market structure: {e}")
+        return {'bos': False, 'choch': False, 'structure': 'NEUTRAL', 'swing_points': [], 'structure_shift': False}
+
+def find_swing_points_ict(data):
+    """Find swing points using ICT methodology (5-candle confirmation)"""
+    try:
+        highs = data['High'].values
+        lows = data['Low'].values
+        closes = data['Close'].values
+        swing_points = []
+        
+        # Find swing highs (5-candle confirmation)
+        for i in range(5, len(highs) - 5):
+            is_swing_high = True
+            for j in range(i-5, i+6):
+                if j != i and highs[j] >= highs[i]:
+                    is_swing_high = False
+                    break
+            
+            if is_swing_high:
+                swing_points.append({
+                    'index': i,
+                    'price': highs[i],
+                    'type': 'HIGH',
+                    'timestamp': data.index[i] if hasattr(data.index, 'iloc') else i,
+                    'strength': calculate_swing_strength(highs[i], data, i, 'HIGH')
+                })
+        
+        # Find swing lows (5-candle confirmation)
+        for i in range(5, len(lows) - 5):
+            is_swing_low = True
+            for j in range(i-5, i+6):
+                if j != i and lows[j] <= lows[i]:
+                    is_swing_low = False
+                    break
+            
+            if is_swing_low:
+                swing_points.append({
+                    'index': i,
+                    'price': lows[i],
+                    'type': 'LOW',
+                    'timestamp': data.index[i] if hasattr(data.index, 'iloc') else i,
+                    'strength': calculate_swing_strength(lows[i], data, i, 'LOW')
+                })
+        
+        # Sort by index
+        swing_points.sort(key=lambda x: x['index'])
+        return swing_points
+        
+    except Exception as e:
+        logger.error(f"Error finding swing points: {e}")
+        return []
+
+def calculate_swing_strength(price, data, index, swing_type):
+    """Calculate strength of swing point based on volume and price action"""
+    try:
+        if 'Volume' not in data.columns:
+            return 1.0
+        
+        # Get volume at swing point
+        swing_volume = data['Volume'].iloc[index]
+        
+        # Get average volume around swing point
+        start_idx = max(0, index - 10)
+        end_idx = min(len(data), index + 10)
+        avg_volume = data['Volume'].iloc[start_idx:end_idx].mean()
+        
+        # Volume strength
+        volume_strength = swing_volume / avg_volume if avg_volume > 0 else 1.0
+        
+        # Price action strength (how far from recent range)
+        if swing_type == 'HIGH':
+            recent_lows = data['Low'].iloc[max(0, index-20):index].min()
+            price_strength = (price - recent_lows) / recent_lows if recent_lows > 0 else 1.0
+        else:
+            recent_highs = data['High'].iloc[max(0, index-20):index].max()
+            price_strength = (recent_highs - price) / recent_highs if recent_highs > 0 else 1.0
+        
+        return min(volume_strength * price_strength, 5.0)  # Cap at 5.0
+        
+    except Exception as e:
+        logger.error(f"Error calculating swing strength: {e}")
+        return 1.0
+
+def detect_bos(swing_points, data):
+    """Detect Break of Structure (BOS) using ICT methodology"""
+    try:
+        if len(swing_points) < 4:
+            return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+        
+        current_price = data['Close'].iloc[-1]
+        recent_swings = swing_points[-10:]  # Last 10 swing points
+        
+        # Find most recent swing high and low
+        recent_highs = [s for s in recent_swings if s['type'] == 'HIGH']
+        recent_lows = [s for s in recent_swings if s['type'] == 'LOW']
+        
+        if not recent_highs or not recent_lows:
+            return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+        
+        # Check for bullish BOS (break above recent swing high)
+        latest_high = max(recent_highs, key=lambda x: x['index'])
+        if current_price > latest_high['price']:
+            return {
+                'detected': True,
+                'type': 'BULLISH_BOS',
+                'level': latest_high['price'],
+                'strength': latest_high['strength'],
+                'break_distance': (current_price - latest_high['price']) / latest_high['price']
+            }
+        
+        # Check for bearish BOS (break below recent swing low)
+        latest_low = max(recent_lows, key=lambda x: x['index'])
+        if current_price < latest_low['price']:
+            return {
+                'detected': True,
+                'type': 'BEARISH_BOS',
+                'level': latest_low['price'],
+                'strength': latest_low['strength'],
+                'break_distance': (latest_low['price'] - current_price) / latest_low['price']
+            }
+        
+        return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting BOS: {e}")
+        return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+
+def detect_choch(swing_points, data):
+    """Detect Change of Character (CHoCH) using ICT methodology"""
+    try:
+        if len(swing_points) < 6:
+            return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+        
+        # Look for structure shift in swing pattern
+        recent_swings = swing_points[-6:]  # Last 6 swing points
+        
+        # Check for bullish CHoCH (higher low after lower low)
+        lows = [s for s in recent_swings if s['type'] == 'LOW']
+        if len(lows) >= 3:
+            # Sort by index to get chronological order
+            lows.sort(key=lambda x: x['index'])
+            
+            # Check if we have higher low after lower low
+            for i in range(1, len(lows)):
+                if lows[i]['price'] > lows[i-1]['price']:
+                    return {
+                        'detected': True,
+                        'type': 'BULLISH_CHOCH',
+                        'level': lows[i]['price'],
+                        'strength': lows[i]['strength'],
+                        'previous_low': lows[i-1]['price']
+                    }
+        
+        # Check for bearish CHoCH (lower high after higher high)
+        highs = [s for s in recent_swings if s['type'] == 'HIGH']
+        if len(highs) >= 3:
+            # Sort by index to get chronological order
+            highs.sort(key=lambda x: x['index'])
+            
+            # Check if we have lower high after higher high
+            for i in range(1, len(highs)):
+                if highs[i]['price'] < highs[i-1]['price']:
+                    return {
+                        'detected': True,
+                        'type': 'BEARISH_CHOCH',
+                        'level': highs[i]['price'],
+                        'strength': highs[i]['strength'],
+                        'previous_high': highs[i-1]['price']
+                    }
+        
+        return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting CHoCH: {e}")
+        return {'detected': False, 'type': None, 'level': None, 'strength': 0}
+
+def determine_market_structure(swing_points, bos_analysis, choch_analysis):
+    """Determine overall market structure based on BOS/CHoCH analysis"""
+    try:
+        if bos_analysis['detected']:
+            return bos_analysis['type']
+        elif choch_analysis['detected']:
+            return choch_analysis['type']
+        else:
+            # Analyze recent swing pattern for structure bias
+            if len(swing_points) >= 4:
+                recent_swings = swing_points[-4:]
+                highs = [s for s in recent_swings if s['type'] == 'HIGH']
+                lows = [s for s in recent_swings if s['type'] == 'LOW']
+                
+                if len(highs) >= 2 and len(lows) >= 2:
+                    # Check for higher highs and higher lows (bullish structure)
+                    if (highs[-1]['price'] > highs[-2]['price'] and 
+                        lows[-1]['price'] > lows[-2]['price']):
+                        return 'BULLISH_STRUCTURE'
+                    
+                    # Check for lower highs and lower lows (bearish structure)
+                    elif (highs[-1]['price'] < highs[-2]['price'] and 
+                          lows[-1]['price'] < lows[-2]['price']):
+                        return 'BEARISH_STRUCTURE'
+            
+            return 'NEUTRAL'
+        
+    except Exception as e:
+        logger.error(f"Error determining market structure: {e}")
+        return 'NEUTRAL'
+
+def analyze_multi_timeframe_trend(mtf_data):
+    """Analyze trend across multiple timeframes for alignment"""
+    try:
+        if not mtf_data:
+            return {'trend_alignment': 0, 'primary_trend': 'NEUTRAL', 'timeframe_analysis': {}}
+        
+        # Weight timeframes by importance (higher timeframes have more weight)
+        timeframe_weights = {
+            '12mo': 0.25, '6mo': 0.20, '3mo': 0.15, '1mo': 0.15,
+            '1w': 0.10, '1d': 0.08, '4h': 0.05, '1h': 0.02
+        }
+        
+        trend_scores = {'BULLISH': 0, 'BEARISH': 0, 'NEUTRAL': 0}
+        timeframe_analysis = {}
+        
+        for tf_name, tf_data in mtf_data.items():
+            if tf_name in timeframe_weights:
+                trend = tf_data.get('trend', 'NEUTRAL')
+                weight = timeframe_weights[tf_name]
+                
+                trend_scores[trend] += weight
+                timeframe_analysis[tf_name] = {
+                    'trend': trend,
+                    'weight': weight,
+                    'key_levels': len(tf_data.get('key_levels', [])),
+                    'market_structure': tf_data.get('market_structure', {}).get('structure', 'NEUTRAL')
+                }
+        
+        # Determine primary trend
+        primary_trend = max(trend_scores, key=trend_scores.get)
+        trend_alignment = trend_scores[primary_trend]
+        
+        return {
+            'trend_alignment': trend_alignment,
+            'primary_trend': primary_trend,
+            'timeframe_analysis': timeframe_analysis,
+            'trend_scores': trend_scores
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing multi-timeframe trend: {e}")
+        return {'trend_alignment': 0, 'primary_trend': 'NEUTRAL', 'timeframe_analysis': {}}
+
+def check_level_confluence(current_price, mtf_data):
+    """Check for confluence of key levels across timeframes"""
+    try:
+        if not mtf_data:
+            return 0
+        
+        confluence_count = 0
+        tolerance = 0.01  # 1% tolerance for level confluence
+        
+        # Collect all key levels from all timeframes
+        all_levels = []
+        for tf_name, tf_data in mtf_data.items():
+            key_levels = tf_data.get('key_levels', [])
+            for level in key_levels:
+                all_levels.append({
+                    'price': level['price'],
+                    'type': level['type'],
+                    'timeframe': tf_name,
+                    'strength': level.get('strength', 0)
+                })
+        
+        # Check for confluence around current price
+        for level in all_levels:
+            if abs(level['price'] - current_price) / current_price < tolerance:
+                confluence_count += 1
+        
+        return min(confluence_count, 5)  # Cap at 5 for scoring
+        
+    except Exception as e:
+        logger.error(f"Error checking level confluence: {e}")
+        return 0
+
+def get_all_key_levels(mtf_data):
+    """Get all key levels from multi-timeframe analysis"""
+    try:
+        all_levels = []
+        for tf_name, tf_data in mtf_data.items():
+            key_levels = tf_data.get('key_levels', [])
+            for level in key_levels:
+                all_levels.append({
+                    'price': level['price'],
+                    'type': level['type'],
+                    'timeframe': tf_name,
+                    'strength': level.get('strength', 0)
+                })
+        
+        # Sort by strength and return top 10
+        all_levels.sort(key=lambda x: x['strength'], reverse=True)
+        return all_levels[:10]
+        
+    except Exception as e:
+        logger.error(f"Error getting all key levels: {e}")
+        return []
+
+def get_market_structure_summary(mtf_data):
+    """Get market structure summary across timeframes"""
+    try:
+        structure_summary = {}
+        for tf_name, tf_data in mtf_data.items():
+            market_structure = tf_data.get('market_structure', {})
+            structure_summary[tf_name] = {
+                'structure': market_structure.get('structure', 'NEUTRAL'),
+                'bos': market_structure.get('bos', False),
+                'choch': market_structure.get('choch', False)
+            }
+        
+        return structure_summary
+        
+    except Exception as e:
+        logger.error(f"Error getting market structure summary: {e}")
+        return {}
+
+def analyze_institutional_order_flow(data):
+    """Analyze Institutional Order Flow using ICT methodology"""
+    try:
+        if len(data) < 50:
+            return {'detected': False, 'type': 'NONE', 'strength': 0, 'patterns': []}
+        
+        patterns = []
+        total_score = 0
+        
+        # 1. Large Volume Spikes (Institutional Activity)
+        volume_analysis = analyze_volume_spikes(data)
+        if volume_analysis['detected']:
+            patterns.append(f"Volume Spike: {volume_analysis['strength']:.1f}x")
+            total_score += volume_analysis['score']
+        
+        # 2. Absorption Patterns (Large orders being absorbed)
+        absorption = detect_absorption_patterns(data)
+        if absorption['detected']:
+            patterns.append(f"Absorption: {absorption['type']}")
+            total_score += absorption['score']
+        
+        # 3. Liquidity Grabs (Stop hunts)
+        liquidity_grabs = detect_liquidity_grabs(data)
+        if liquidity_grabs['detected']:
+            patterns.append(f"Liquidity Grab: {liquidity_grabs['type']}")
+            total_score += liquidity_grabs['score']
+        
+        # 4. Order Block Formation (Institutional zones)
+        order_blocks = detect_institutional_order_blocks(data)
+        if order_blocks['detected']:
+            patterns.append(f"Order Block: {order_blocks['type']}")
+            total_score += order_blocks['score']
+        
+        # 5. Market Maker Behavior
+        mm_behavior = detect_market_maker_behavior(data)
+        if mm_behavior['detected']:
+            patterns.append(f"MM Behavior: {mm_behavior['type']}")
+            total_score += mm_behavior['score']
+        
+        # Determine overall institutional flow type
+        flow_type = determine_institutional_flow_type(patterns, total_score)
+        
+        return {
+            'detected': total_score > 10,
+            'type': flow_type,
+            'strength': min(total_score / 20, 1.0),  # Normalize to 0-1
+            'patterns': patterns,
+            'score': total_score
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing institutional order flow: {e}")
+        return {'detected': False, 'type': 'NONE', 'strength': 0, 'patterns': []}
+
+def analyze_volume_spikes(data):
+    """Detect large volume spikes indicating institutional activity"""
+    try:
+        if 'Volume' not in data.columns:
+            return {'detected': False, 'strength': 0, 'score': 0}
+        
+        volumes = data['Volume'].values
+        avg_volume = np.mean(volumes[-20:])  # Last 20 periods average
+        
+        # Check recent volume spikes
+        recent_volumes = volumes[-5:]
+        max_recent_volume = np.max(recent_volumes)
+        
+        if max_recent_volume > avg_volume * 2.0:  # 2x average volume
+            strength = max_recent_volume / avg_volume
+            score = min(strength * 5, 15)  # Cap at 15 points
+            return {'detected': True, 'strength': strength, 'score': score}
+        
+        return {'detected': False, 'strength': 0, 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error analyzing volume spikes: {e}")
+        return {'detected': False, 'strength': 0, 'score': 0}
+
+def detect_absorption_patterns(data):
+    """Detect absorption patterns (large orders being absorbed)"""
+    try:
+        if len(data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        # Look for high volume with small price movement (absorption)
+        recent_data = data.tail(10)
+        
+        for i in range(len(recent_data) - 3):
+            period_data = recent_data.iloc[i:i+3]
+            
+            # High volume with small price range
+            avg_volume = period_data['Volume'].mean()
+            price_range = (period_data['High'].max() - period_data['Low'].min()) / period_data['Close'].iloc[0]
+            
+            if (avg_volume > recent_data['Volume'].mean() * 1.5 and 
+                price_range < 0.02):  # Less than 2% price movement
+                
+                # Determine absorption type
+                if period_data['Close'].iloc[-1] > period_data['Open'].iloc[0]:
+                    return {'detected': True, 'type': 'BULLISH_ABSORPTION', 'score': 8}
+                else:
+                    return {'detected': True, 'type': 'BEARISH_ABSORPTION', 'score': 8}
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting absorption patterns: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_liquidity_grabs(data):
+    """Detect liquidity grabs (stop hunts)"""
+    try:
+        if len(data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = data['High'].values
+        lows = data['Low'].values
+        closes = data['Close'].values
+        
+        # Look for wicks that break previous levels then reverse
+        for i in range(5, len(data) - 2):
+            # Check for bullish liquidity grab (wick below previous low, then close above)
+            if i >= 5:
+                prev_low = min(lows[i-5:i])
+                if (lows[i] < prev_low and closes[i] > prev_low and 
+                    closes[i] > closes[i-1]):
+                    return {'detected': True, 'type': 'BULLISH_LIQUIDITY_GRAB', 'score': 10}
+            
+            # Check for bearish liquidity grab (wick above previous high, then close below)
+            if i >= 5:
+                prev_high = max(highs[i-5:i])
+                if (highs[i] > prev_high and closes[i] < prev_high and 
+                    closes[i] < closes[i-1]):
+                    return {'detected': True, 'type': 'BEARISH_LIQUIDITY_GRAB', 'score': 10}
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting liquidity grabs: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_institutional_order_blocks(data):
+    """Detect institutional order blocks (supply/demand zones)"""
+    try:
+        if len(data) < 30:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        # Look for strong moves followed by consolidation
+        recent_data = data.tail(20)
+        
+        # Check for bullish order block (strong up move + consolidation)
+        for i in range(5, len(recent_data) - 5):
+            move_data = recent_data.iloc[i-5:i+5]
+            
+            # Strong bullish move
+            price_change = (move_data['Close'].iloc[-1] - move_data['Open'].iloc[0]) / move_data['Open'].iloc[0]
+            
+            if price_change > 0.03:  # 3%+ move
+                # Check for consolidation after move
+                consolidation_range = (move_data['High'].max() - move_data['Low'].min()) / move_data['Close'].iloc[0]
+                
+                if consolidation_range < 0.02:  # Less than 2% consolidation
+                    return {'detected': True, 'type': 'BULLISH_ORDER_BLOCK', 'score': 12}
+        
+        # Check for bearish order block (strong down move + consolidation)
+        for i in range(5, len(recent_data) - 5):
+            move_data = recent_data.iloc[i-5:i+5]
+            
+            # Strong bearish move
+            price_change = (move_data['Close'].iloc[-1] - move_data['Open'].iloc[0]) / move_data['Open'].iloc[0]
+            
+            if price_change < -0.03:  # 3%+ move down
+                # Check for consolidation after move
+                consolidation_range = (move_data['High'].max() - move_data['Low'].min()) / move_data['Close'].iloc[0]
+                
+                if consolidation_range < 0.02:  # Less than 2% consolidation
+                    return {'detected': True, 'type': 'BEARISH_ORDER_BLOCK', 'score': 12}
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting institutional order blocks: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_market_maker_behavior(data):
+    """Detect market maker behavior patterns"""
+    try:
+        if len(data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        # Look for equal highs/lows (market maker manipulation)
+        highs = data['High'].values
+        lows = data['Low'].values
+        
+        recent_highs = highs[-10:]
+        recent_lows = lows[-10:]
+        
+        # Check for equal highs (within 0.1% tolerance)
+        for i in range(len(recent_highs) - 1):
+            for j in range(i + 1, len(recent_highs)):
+                if abs(recent_highs[i] - recent_highs[j]) / recent_highs[i] < 0.001:
+                    return {'detected': True, 'type': 'EQUAL_HIGHS', 'score': 6}
+        
+        # Check for equal lows (within 0.1% tolerance)
+        for i in range(len(recent_lows) - 1):
+            for j in range(i + 1, len(recent_lows)):
+                if abs(recent_lows[i] - recent_lows[j]) / recent_lows[i] < 0.001:
+                    return {'detected': True, 'type': 'EQUAL_LOWS', 'score': 6}
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting market maker behavior: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def determine_institutional_flow_type(patterns, total_score):
+    """Determine the type of institutional flow based on patterns"""
+    try:
+        if total_score < 10:
+            return 'NONE'
+        
+        # Count pattern types
+        bullish_patterns = sum(1 for p in patterns if 'BULLISH' in p or 'UP' in p)
+        bearish_patterns = sum(1 for p in patterns if 'BEARISH' in p or 'DOWN' in p)
+        
+        if bullish_patterns > bearish_patterns:
+            return 'INSTITUTIONAL_BUYING'
+        elif bearish_patterns > bullish_patterns:
+            return 'INSTITUTIONAL_SELLING'
+        else:
+            return 'MIXED_INSTITUTIONAL_FLOW'
+        
+    except Exception as e:
+        logger.error(f"Error determining institutional flow type: {e}")
+        return 'NONE'
+
+def analyze_trading_sessions(data):
+    """Analyze trading sessions and kill zones using ICT methodology"""
+    try:
+        if len(data) < 50:
+            return {'sessions': {}, 'kill_zones': [], 'active_session': 'NONE'}
+        
+        # Define session times (UTC)
+        sessions = {
+            'ASIAN': {'start': 0, 'end': 8, 'name': 'Asian Session'},
+            'LONDON': {'start': 8, 'end': 16, 'name': 'London Session'},
+            'NEW_YORK': {'start': 13, 'end': 21, 'name': 'New York Session'},
+            'OVERLAP': {'start': 13, 'end': 16, 'name': 'London-NY Overlap'}
+        }
+        
+        # Get current time and determine active session
+        current_hour = datetime.now().hour
+        active_session = 'NONE'
+        
+        for session_name, session_info in sessions.items():
+            if session_info['start'] <= current_hour < session_info['end']:
+                active_session = session_name
+                break
+        
+        # Analyze each session's performance
+        session_analysis = {}
+        for session_name, session_info in sessions.items():
+            session_data = filter_session_data(data, session_info['start'], session_info['end'])
+            if not session_data.empty:
+                session_analysis[session_name] = analyze_session_performance(session_data, session_name)
+        
+        # Identify kill zones (high probability times)
+        kill_zones = identify_kill_zones(session_analysis, active_session)
+        
+        return {
+            'sessions': session_analysis,
+            'kill_zones': kill_zones,
+            'active_session': active_session
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing trading sessions: {e}")
+        return {'sessions': {}, 'kill_zones': [], 'active_session': 'NONE'}
+
+def filter_session_data(data, start_hour, end_hour):
+    """Filter data for specific session hours"""
+    try:
+        # This is a simplified version - in production, you'd use proper timezone handling
+        # For now, we'll analyze all data as if it's in the session
+        return data.tail(50)  # Return last 50 periods as session data
+        
+    except Exception as e:
+        logger.error(f"Error filtering session data: {e}")
+        return pd.DataFrame()
+
+def analyze_session_performance(session_data, session_name):
+    """Analyze performance characteristics of a trading session"""
+    try:
+        if session_data.empty:
+            return {'volatility': 0, 'volume': 0, 'trend_strength': 0, 'quality': 0}
+        
+        # Calculate session metrics
+        volatility = calculate_session_volatility(session_data)
+        volume_ratio = calculate_session_volume(session_data)
+        trend_strength = calculate_session_trend_strength(session_data)
+        
+        # Session-specific characteristics
+        session_quality = calculate_session_quality(session_data, session_name)
+        
+        return {
+            'volatility': volatility,
+            'volume': volume_ratio,
+            'trend_strength': trend_strength,
+            'quality': session_quality,
+            'name': session_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing session performance: {e}")
+        return {'volatility': 0, 'volume': 0, 'trend_strength': 0, 'quality': 0}
+
+def calculate_session_volatility(data):
+    """Calculate volatility for a session"""
+    try:
+        if len(data) < 2:
+            return 0
+        
+        # Calculate average true range
+        high_low = data['High'] - data['Low']
+        high_close = abs(data['High'] - data['Close'].shift(1))
+        low_close = abs(data['Low'] - data['Close'].shift(1))
+        
+        true_range = np.maximum(high_low, np.maximum(high_close, low_close))
+        atr = true_range.mean()
+        
+        # Normalize by price
+        avg_price = data['Close'].mean()
+        return (atr / avg_price) * 100 if avg_price > 0 else 0
+        
+    except Exception as e:
+        logger.error(f"Error calculating session volatility: {e}")
+        return 0
+
+def calculate_session_volume(data):
+    """Calculate volume ratio for a session"""
+    try:
+        if 'Volume' not in data.columns or len(data) < 10:
+            return 1.0
+        
+        # Compare session volume to average
+        session_volume = data['Volume'].mean()
+        avg_volume = data['Volume'].tail(20).mean()
+        
+        return session_volume / avg_volume if avg_volume > 0 else 1.0
+        
+    except Exception as e:
+        logger.error(f"Error calculating session volume: {e}")
+        return 1.0
+
+def calculate_session_trend_strength(data):
+    """Calculate trend strength for a session"""
+    try:
+        if len(data) < 10:
+            return 0
+        
+        # Calculate price change percentage
+        price_change = (data['Close'].iloc[-1] - data['Open'].iloc[0]) / data['Open'].iloc[0]
+        
+        # Calculate consistency of move
+        closes = data['Close'].values
+        trend_consistency = 0
+        
+        for i in range(1, len(closes)):
+            if closes[i] > closes[i-1]:
+                trend_consistency += 1
+            elif closes[i] < closes[i-1]:
+                trend_consistency -= 1
+        
+        # Normalize trend strength
+        trend_strength = abs(price_change) * (abs(trend_consistency) / len(closes))
+        return min(trend_strength * 100, 100)  # Cap at 100
+        
+    except Exception as e:
+        logger.error(f"Error calculating session trend strength: {e}")
+        return 0
+
+def calculate_session_quality(data, session_name):
+    """Calculate overall quality score for a session"""
+    try:
+        # Base quality scores for different sessions
+        base_scores = {
+            'ASIAN': 0.6,      # Lower volatility, consolidation
+            'LONDON': 0.9,     # High volatility, good trends
+            'NEW_YORK': 0.95,  # Highest volatility, best trends
+            'OVERLAP': 1.0     # Best session for trading
+        }
+        
+        base_score = base_scores.get(session_name, 0.5)
+        
+        # Adjust based on current performance
+        volatility = calculate_session_volatility(data)
+        volume_ratio = calculate_session_volume(data)
+        trend_strength = calculate_session_trend_strength(data)
+        
+        # Quality multipliers
+        volatility_multiplier = min(volatility / 2, 1.5)  # Higher volatility = better
+        volume_multiplier = min(volume_ratio, 2.0)        # Higher volume = better
+        trend_multiplier = min(trend_strength / 50, 1.2)  # Stronger trend = better
+        
+        quality = base_score * volatility_multiplier * volume_multiplier * trend_multiplier
+        return min(quality, 1.0)  # Cap at 1.0
+        
+    except Exception as e:
+        logger.error(f"Error calculating session quality: {e}")
+        return 0.5
+
+def identify_kill_zones(session_analysis, active_session):
+    """Identify high-probability kill zones based on session analysis"""
+    try:
+        kill_zones = []
+        
+        # London Kill Zone (8:00-10:00 UTC)
+        if 'LONDON' in session_analysis:
+            london_quality = session_analysis['LONDON']['quality']
+            if london_quality > 0.7:
+                kill_zones.append({
+                    'name': 'London Kill Zone',
+                    'time': '08:00-10:00 UTC',
+                    'quality': london_quality,
+                    'type': 'BULLISH' if session_analysis['LONDON']['trend_strength'] > 0 else 'BEARISH'
+                })
+        
+        # New York Kill Zone (13:30-15:30 UTC)
+        if 'NEW_YORK' in session_analysis:
+            ny_quality = session_analysis['NEW_YORK']['quality']
+            if ny_quality > 0.7:
+                kill_zones.append({
+                    'name': 'New York Kill Zone',
+                    'time': '13:30-15:30 UTC',
+                    'quality': ny_quality,
+                    'type': 'BULLISH' if session_analysis['NEW_YORK']['trend_strength'] > 0 else 'BEARISH'
+                })
+        
+        # London-NY Overlap (13:00-16:00 UTC)
+        if 'OVERLAP' in session_analysis:
+            overlap_quality = session_analysis['OVERLAP']['quality']
+            if overlap_quality > 0.8:
+                kill_zones.append({
+                    'name': 'London-NY Overlap',
+                    'time': '13:00-16:00 UTC',
+                    'quality': overlap_quality,
+                    'type': 'BULLISH' if session_analysis['OVERLAP']['trend_strength'] > 0 else 'BEARISH'
+                })
+        
+        # Sort by quality (highest first)
+        kill_zones.sort(key=lambda x: x['quality'], reverse=True)
+        
+        return kill_zones
+        
+    except Exception as e:
+        logger.error(f"Error identifying kill zones: {e}")
+        return []
+
+def detect_advanced_ict_patterns(hist_data):
+    """Detect advanced ICT/SMC patterns for higher profitability"""
+    try:
+        if len(hist_data) < 50:
+            return {'patterns': [], 'score': 0, 'confluence': 0}
+        
+        patterns = []
+        total_score = 0
+        confluence_factors = []
+        
+        # 1. Liquidity Sweep & Reclaim Pattern
+        sweep_pattern = detect_liquidity_sweep_reclaim(hist_data)
+        if sweep_pattern['detected']:
+            patterns.append(f"Liquidity Sweep: {sweep_pattern['type']}")
+            total_score += sweep_pattern['score']
+            confluence_factors.append('LIQUIDITY_SWEEP')
+        
+        # 2. Order Block Break & Retest
+        ob_pattern = detect_order_block_break_retest(hist_data)
+        if ob_pattern['detected']:
+            patterns.append(f"OB Break/Retest: {ob_pattern['type']}")
+            total_score += ob_pattern['score']
+            confluence_factors.append('ORDER_BLOCK_BR')
+        
+        # 3. Fair Value Gap Fill
+        fvg_pattern = detect_fvg_fill_pattern(hist_data)
+        if fvg_pattern['detected']:
+            patterns.append(f"FVG Fill: {fvg_pattern['type']}")
+            total_score += fvg_pattern['score']
+            confluence_factors.append('FVG_FILL')
+        
+        # 4. Market Structure Shift (MSS)
+        mss_pattern = detect_market_structure_shift(hist_data)
+        if mss_pattern['detected']:
+            patterns.append(f"MSS: {mss_pattern['type']}")
+            total_score += mss_pattern['score']
+            confluence_factors.append('MARKET_STRUCTURE_SHIFT')
+        
+        # 5. Imbalance & Equal Highs/Lows
+        imbalance_pattern = detect_imbalance_pattern(hist_data)
+        if imbalance_pattern['detected']:
+            patterns.append(f"Imbalance: {imbalance_pattern['type']}")
+            total_score += imbalance_pattern['score']
+            confluence_factors.append('IMBALANCE')
+        
+        # 6. Kill Zone Confluence
+        kill_zone_pattern = detect_kill_zone_confluence(hist_data)
+        if kill_zone_pattern['detected']:
+            patterns.append(f"Kill Zone: {kill_zone_pattern['type']}")
+            total_score += kill_zone_pattern['score']
+            confluence_factors.append('KILL_ZONE_CONFLUENCE')
+        
+        # Calculate confluence score
+        confluence_score = len(confluence_factors) * 5  # 5 points per confluence factor
+        
+        return {
+            'patterns': patterns,
+            'score': total_score,
+            'confluence': confluence_score,
+            'confluence_factors': confluence_factors
+        }
+        
+    except Exception as e:
+        logger.error(f"Error detecting advanced ICT patterns: {e}")
+        return {'patterns': [], 'score': 0, 'confluence': 0}
+
+def detect_liquidity_sweep_reclaim(hist_data):
+    """Detect liquidity sweep and reclaim pattern"""
+    try:
+        if len(hist_data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Look for liquidity sweep (break of previous high/low then reclaim)
+        for i in range(10, len(hist_data) - 5):
+            # Check for bullish liquidity sweep
+            prev_high = max(highs[i-10:i])
+            if highs[i] > prev_high and closes[i] < prev_high:
+                # Check if price reclaims above the previous high
+                for j in range(i+1, min(i+10, len(hist_data))):
+                    if closes[j] > prev_high:
+                        return {
+                            'detected': True,
+                            'type': 'BULLISH_SWEEP_RECLAIM',
+                            'score': 15,
+                            'sweep_level': prev_high,
+                            'reclaim_candle': j
+                        }
+            
+            # Check for bearish liquidity sweep
+            prev_low = min(lows[i-10:i])
+            if lows[i] < prev_low and closes[i] > prev_low:
+                # Check if price reclaims below the previous low
+                for j in range(i+1, min(i+10, len(hist_data))):
+                    if closes[j] < prev_low:
+                        return {
+                            'detected': True,
+                            'type': 'BEARISH_SWEEP_RECLAIM',
+                            'score': 15,
+                            'sweep_level': prev_low,
+                            'reclaim_candle': j
+                        }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting liquidity sweep reclaim: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_order_block_break_retest(hist_data):
+    """Detect order block break and retest pattern"""
+    try:
+        if len(hist_data) < 30:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Look for order block formation (strong move + consolidation)
+        for i in range(10, len(hist_data) - 10):
+            # Check for bullish order block
+            move_data = hist_data.iloc[i-5:i+5]
+            price_change = (move_data['Close'].iloc[-1] - move_data['Open'].iloc[0]) / move_data['Open'].iloc[0]
+            
+            if price_change > 0.02:  # 2%+ bullish move
+                # Check for consolidation after move
+                consolidation_range = (move_data['High'].max() - move_data['Low'].min()) / move_data['Close'].iloc[0]
+                
+                if consolidation_range < 0.015:  # Less than 1.5% consolidation
+                    ob_high = move_data['High'].max()
+                    ob_low = move_data['Low'].min()
+                    
+                    # Check for break and retest
+                    for j in range(i+5, min(i+20, len(hist_data))):
+                        if closes[j] > ob_high:  # Break above
+                            # Look for retest
+                            for k in range(j+1, min(j+10, len(hist_data))):
+                                if ob_low <= closes[k] <= ob_high:  # Retest of order block
+                                    return {
+                                        'detected': True,
+                                        'type': 'BULLISH_OB_BREAK_RETEST',
+                                        'score': 20,
+                                        'ob_level': (ob_high + ob_low) / 2,
+                                        'break_candle': j,
+                                        'retest_candle': k
+                                    }
+            
+            # Check for bearish order block
+            if price_change < -0.02:  # 2%+ bearish move
+                consolidation_range = (move_data['High'].max() - move_data['Low'].min()) / move_data['Close'].iloc[0]
+                
+                if consolidation_range < 0.015:  # Less than 1.5% consolidation
+                    ob_high = move_data['High'].max()
+                    ob_low = move_data['Low'].min()
+                    
+                    # Check for break and retest
+                    for j in range(i+5, min(i+20, len(hist_data))):
+                        if closes[j] < ob_low:  # Break below
+                            # Look for retest
+                            for k in range(j+1, min(j+10, len(hist_data))):
+                                if ob_low <= closes[k] <= ob_high:  # Retest of order block
+                                    return {
+                                        'detected': True,
+                                        'type': 'BEARISH_OB_BREAK_RETEST',
+                                        'score': 20,
+                                        'ob_level': (ob_high + ob_low) / 2,
+                                        'break_candle': j,
+                                        'retest_candle': k
+                                    }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting order block break retest: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_fvg_fill_pattern(hist_data):
+    """Detect Fair Value Gap fill pattern"""
+    try:
+        if len(hist_data) < 15:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Look for FVG formation and fill
+        for i in range(5, len(hist_data) - 5):
+            # Check for bullish FVG (gap between candle 1 low and candle 3 high)
+            if i >= 2 and i < len(hist_data) - 2:
+                candle1_high = highs[i-2]
+                candle1_low = lows[i-2]
+                candle2_high = highs[i-1]
+                candle2_low = lows[i-1]
+                candle3_high = highs[i]
+                candle3_low = lows[i]
+                
+                # Bullish FVG: candle1 high < candle3 low (gap)
+                if candle1_high < candle3_low:
+                    fvg_top = candle3_low
+                    fvg_bottom = candle1_high
+                    
+                    # Check for FVG fill
+                    for j in range(i+1, min(i+15, len(hist_data))):
+                        if fvg_bottom <= closes[j] <= fvg_top:
+                            return {
+                                'detected': True,
+                                'type': 'BULLISH_FVG_FILL',
+                                'score': 12,
+                                'fvg_level': (fvg_top + fvg_bottom) / 2,
+                                'fill_candle': j
+                            }
+                
+                # Bearish FVG: candle1 low > candle3 high (gap)
+                if candle1_low > candle3_high:
+                    fvg_top = candle1_low
+                    fvg_bottom = candle3_high
+                    
+                    # Check for FVG fill
+                    for j in range(i+1, min(i+15, len(hist_data))):
+                        if fvg_bottom <= closes[j] <= fvg_top:
+                            return {
+                                'detected': True,
+                                'type': 'BEARISH_FVG_FILL',
+                                'score': 12,
+                                'fvg_level': (fvg_top + fvg_bottom) / 2,
+                                'fill_candle': j
+                            }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting FVG fill pattern: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_market_structure_shift(hist_data):
+    """Detect Market Structure Shift (MSS) pattern"""
+    try:
+        if len(hist_data) < 30:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Look for structure shift in swing points
+        swing_highs = []
+        swing_lows = []
+        
+        # Find swing points
+        for i in range(5, len(hist_data) - 5):
+            # Swing high
+            if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                swing_highs.append({'index': i, 'price': highs[i]})
+            # Swing low
+            if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                swing_lows.append({'index': i, 'price': lows[i]})
+        
+        # Check for bullish MSS (higher low after lower low)
+        if len(swing_lows) >= 3:
+            recent_lows = swing_lows[-3:]
+            if (recent_lows[-1]['price'] > recent_lows[-2]['price'] and 
+                recent_lows[-2]['price'] < recent_lows[-3]['price']):
+                return {
+                    'detected': True,
+                    'type': 'BULLISH_MSS',
+                    'score': 18,
+                    'shift_level': recent_lows[-1]['price'],
+                    'previous_low': recent_lows[-2]['price']
+                }
+        
+        # Check for bearish MSS (lower high after higher high)
+        if len(swing_highs) >= 3:
+            recent_highs = swing_highs[-3:]
+            if (recent_highs[-1]['price'] < recent_highs[-2]['price'] and 
+                recent_highs[-2]['price'] > recent_highs[-3]['price']):
+                return {
+                    'detected': True,
+                    'type': 'BEARISH_MSS',
+                    'score': 18,
+                    'shift_level': recent_highs[-1]['price'],
+                    'previous_high': recent_highs[-2]['price']
+                }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting market structure shift: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_imbalance_pattern(hist_data):
+    """Detect imbalance and equal highs/lows pattern"""
+    try:
+        if len(hist_data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Look for equal highs (within 0.1% tolerance)
+        equal_highs = []
+        for i in range(len(highs) - 1):
+            for j in range(i + 1, len(highs)):
+                if abs(highs[i] - highs[j]) / highs[i] < 0.001:
+                    equal_highs.append((i, j, highs[i]))
+        
+        # Look for equal lows (within 0.1% tolerance)
+        equal_lows = []
+        for i in range(len(lows) - 1):
+            for j in range(i + 1, len(lows)):
+                if abs(lows[i] - lows[j]) / lows[i] < 0.001:
+                    equal_lows.append((i, j, lows[i]))
+        
+        # Check for imbalance (price moves away from equal levels)
+        if equal_highs:
+            latest_equal_high = max(equal_highs, key=lambda x: x[1])[2]
+            if closes[-1] < latest_equal_high * 0.995:  # 0.5% below equal high
+                return {
+                    'detected': True,
+                    'type': 'BEARISH_IMBALANCE',
+                    'score': 10,
+                    'equal_level': latest_equal_high,
+                    'imbalance_type': 'EQUAL_HIGHS'
+                }
+        
+        if equal_lows:
+            latest_equal_low = max(equal_lows, key=lambda x: x[1])[2]
+            if closes[-1] > latest_equal_low * 1.005:  # 0.5% above equal low
+                return {
+                    'detected': True,
+                    'type': 'BULLISH_IMBALANCE',
+                    'score': 10,
+                    'equal_level': latest_equal_low,
+                    'imbalance_type': 'EQUAL_LOWS'
+                }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting imbalance pattern: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def detect_kill_zone_confluence(hist_data):
+    """Detect kill zone confluence with other patterns"""
+    try:
+        if len(hist_data) < 20:
+            return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+        # Get current time
+        current_hour = datetime.now().hour
+        
+        # Define kill zones (UTC)
+        london_kill_zone = 8 <= current_hour < 10
+        ny_kill_zone = 13 <= current_hour < 15
+        overlap_kill_zone = 13 <= current_hour < 16
+        
+        kill_zone_active = london_kill_zone or ny_kill_zone or overlap_kill_zone
+        
+        if kill_zone_active:
+            # Check for confluence with other patterns
+            confluence_score = 0
+            confluence_factors = []
+            
+            # Check for volume spike during kill zone
+            if 'Volume' in hist_data.columns:
+                recent_volume = hist_data['Volume'].tail(5).mean()
+                avg_volume = hist_data['Volume'].tail(20).mean()
+                if recent_volume > avg_volume * 1.5:
+                    confluence_score += 5
+                    confluence_factors.append('VOLUME_SPIKE')
+            
+            # Check for price action confirmation
+            closes = hist_data['Close'].values
+            if len(closes) >= 3:
+                if closes[-1] > closes[-2] > closes[-3]:  # Bullish momentum
+                    confluence_score += 3
+                    confluence_factors.append('BULLISH_MOMENTUM')
+                elif closes[-1] < closes[-2] < closes[-3]:  # Bearish momentum
+                    confluence_score += 3
+                    confluence_factors.append('BEARISH_MOMENTUM')
+            
+            if confluence_score >= 5:
+                zone_name = "London" if london_kill_zone else "NY" if ny_kill_zone else "Overlap"
+                return {
+                    'detected': True,
+                    'type': f'{zone_name.upper()}_KILL_ZONE_CONFLUENCE',
+                    'score': 15 + confluence_score,
+                    'confluence_factors': confluence_factors
+                }
+        
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+        
+    except Exception as e:
+        logger.error(f"Error detecting kill zone confluence: {e}")
+        return {'detected': False, 'type': 'NONE', 'score': 0}
+
+def analyze_market_conditions(hist_data):
+    """Analyze current market conditions and optimize signal parameters"""
+    try:
+        if len(hist_data) < 50:
+            return {'condition': 'UNKNOWN', 'volatility': 'NORMAL', 'trend': 'SIDEWAYS', 'optimization': {}}
+        
+        closes = hist_data['Close'].values
+        volumes = hist_data['Volume'].values if 'Volume' in hist_data.columns else np.ones(len(closes))
+        
+        # 1. Volatility Analysis
+        volatility = calculate_market_volatility(hist_data)
+        
+        # 2. Trend Analysis
+        trend_strength = analyze_trend_strength(hist_data)
+        
+        # 3. Volume Analysis
+        volume_profile = analyze_volume_profile(hist_data)
+        
+        # 4. Market Structure Analysis
+        market_structure = analyze_market_structure_condition(hist_data)
+        
+        # 5. Session Analysis
+        session_analysis = analyze_current_session_condition(hist_data)
+        
+        # Determine market condition
+        condition = determine_market_condition(volatility, trend_strength, volume_profile, market_structure)
+        
+        # Generate optimization parameters
+        optimization = generate_optimization_parameters(condition, volatility, trend_strength, volume_profile)
+        
+        return {
+            'condition': condition,
+            'volatility': volatility['level'],
+            'trend': trend_strength['direction'],
+            'volume_profile': volume_profile['type'],
+            'market_structure': market_structure['type'],
+            'session': session_analysis['active_session'],
+            'optimization': optimization
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing market conditions: {e}")
+        return {'condition': 'UNKNOWN', 'volatility': 'NORMAL', 'trend': 'SIDEWAYS', 'optimization': {}}
+
+def calculate_market_volatility(hist_data):
+    """Calculate current market volatility"""
+    try:
+        closes = hist_data['Close'].values
+        
+        # Calculate ATR for volatility
+        high_low = hist_data['High'].values - hist_data['Low'].values
+        high_close = np.abs(hist_data['High'].values - np.roll(closes, 1))
+        low_close = np.abs(hist_data['Low'].values - np.roll(closes, 1))
+        
+        true_range = np.maximum(high_low, np.maximum(high_close, low_close))
+        atr = np.mean(true_range[1:])  # Skip first element due to roll
+        
+        # Calculate volatility percentage
+        volatility_pct = (atr / closes[-1]) * 100
+        
+        # Classify volatility
+        if volatility_pct > 3.0:
+            level = 'HIGH'
+            multiplier = 1.5
+        elif volatility_pct > 1.5:
+            level = 'NORMAL'
+            multiplier = 1.0
+        else:
+            level = 'LOW'
+            multiplier = 0.7
+        
+        return {
+            'level': level,
+            'percentage': volatility_pct,
+            'atr': atr,
+            'multiplier': multiplier
+        }
+        
+    except Exception as e:
+        logger.error(f"Error calculating market volatility: {e}")
+        return {'level': 'NORMAL', 'percentage': 1.5, 'atr': 0, 'multiplier': 1.0}
+
+def analyze_trend_strength(hist_data):
+    """Analyze trend strength and direction"""
+    try:
+        closes = hist_data['Close'].values
+        
+        # Calculate trend using multiple timeframes
+        short_trend = (closes[-5] - closes[-10]) / closes[-10] if len(closes) >= 10 else 0
+        medium_trend = (closes[-10] - closes[-20]) / closes[-20] if len(closes) >= 20 else 0
+        long_trend = (closes[-20] - closes[-40]) / closes[-40] if len(closes) >= 40 else 0
+        
+        # Calculate trend strength
+        trend_strength = abs(short_trend) + abs(medium_trend) + abs(long_trend)
+        
+        # Determine direction
+        if short_trend > 0.02 and medium_trend > 0.01:
+            direction = 'STRONG_BULLISH'
+            strength = 'STRONG'
+        elif short_trend > 0.01:
+            direction = 'BULLISH'
+            strength = 'MODERATE'
+        elif short_trend < -0.02 and medium_trend < -0.01:
+            direction = 'STRONG_BEARISH'
+            strength = 'STRONG'
+        elif short_trend < -0.01:
+            direction = 'BEARISH'
+            strength = 'MODERATE'
+        else:
+            direction = 'SIDEWAYS'
+            strength = 'WEAK'
+        
+        return {
+            'direction': direction,
+            'strength': strength,
+            'short_trend': short_trend,
+            'medium_trend': medium_trend,
+            'long_trend': long_trend,
+            'trend_strength': trend_strength
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing trend strength: {e}")
+        return {'direction': 'SIDEWAYS', 'strength': 'WEAK', 'short_trend': 0, 'medium_trend': 0, 'long_trend': 0, 'trend_strength': 0}
+
+def analyze_volume_profile(hist_data):
+    """Analyze volume profile and characteristics"""
+    try:
+        if 'Volume' not in hist_data.columns:
+            return {'type': 'UNKNOWN', 'ratio': 1.0, 'characteristics': []}
+        
+        volumes = hist_data['Volume'].values
+        
+        # Calculate volume ratios
+        recent_volume = np.mean(volumes[-5:])
+        avg_volume = np.mean(volumes[-20:])
+        volume_ratio = recent_volume / avg_volume if avg_volume > 0 else 1.0
+        
+        # Analyze volume characteristics
+        characteristics = []
+        
+        if volume_ratio > 2.0:
+            volume_type = 'HIGH'
+            characteristics.append('VOLUME_SURGE')
+        elif volume_ratio > 1.5:
+            volume_type = 'ELEVATED'
+            characteristics.append('VOLUME_INCREASE')
+        elif volume_ratio < 0.5:
+            volume_type = 'LOW'
+            characteristics.append('VOLUME_DECLINE')
+        else:
+            volume_type = 'NORMAL'
+            characteristics.append('VOLUME_NORMAL')
+        
+        # Check for volume divergence
+        closes = hist_data['Close'].values
+        if len(closes) >= 10:
+            price_change = (closes[-1] - closes[-10]) / closes[-10]
+            volume_change = (recent_volume - np.mean(volumes[-20:-10])) / np.mean(volumes[-20:-10]) if len(volumes) >= 20 else 0
+            
+            if price_change > 0.02 and volume_change < -0.2:
+                characteristics.append('BEARISH_DIVERGENCE')
+            elif price_change < -0.02 and volume_change < -0.2:
+                characteristics.append('BULLISH_DIVERGENCE')
+        
+        return {
+            'type': volume_type,
+            'ratio': volume_ratio,
+            'characteristics': characteristics
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing volume profile: {e}")
+        return {'type': 'NORMAL', 'ratio': 1.0, 'characteristics': []}
+
+def analyze_market_structure_condition(hist_data):
+    """Analyze market structure condition"""
+    try:
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        closes = hist_data['Close'].values
+        
+        # Find recent swing points
+        swing_highs = []
+        swing_lows = []
+        
+        for i in range(5, len(hist_data) - 5):
+            if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                swing_highs.append(highs[i])
+            if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                swing_lows.append(lows[i])
+        
+        # Analyze structure
+        if len(swing_highs) >= 2 and len(swing_lows) >= 2:
+            # Check for higher highs and higher lows (uptrend)
+            if (swing_highs[-1] > swing_highs[-2] and 
+                swing_lows[-1] > swing_lows[-2]):
+                structure_type = 'UPTREND'
+            # Check for lower highs and lower lows (downtrend)
+            elif (swing_highs[-1] < swing_highs[-2] and 
+                  swing_lows[-1] < swing_lows[-2]):
+                structure_type = 'DOWNTREND'
+            # Check for ranging market
+            elif (abs(swing_highs[-1] - swing_highs[-2]) / swing_highs[-2] < 0.02 and
+                  abs(swing_lows[-1] - swing_lows[-2]) / swing_lows[-2] < 0.02):
+                structure_type = 'RANGING'
+            else:
+                structure_type = 'MIXED'
+        else:
+            structure_type = 'INSUFFICIENT_DATA'
+        
+        return {
+            'type': structure_type,
+            'swing_highs': len(swing_highs),
+            'swing_lows': len(swing_lows)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing market structure condition: {e}")
+        return {'type': 'UNKNOWN', 'swing_highs': 0, 'swing_lows': 0}
+
+def analyze_current_session_condition(hist_data):
+    """Analyze current trading session condition"""
+    try:
+        current_hour = datetime.now().hour
+        
+        # Define sessions
+        asian_session = 0 <= current_hour < 8
+        london_session = 8 <= current_hour < 16
+        ny_session = 13 <= current_hour < 21
+        overlap_session = 13 <= current_hour < 16
+        
+        if overlap_session:
+            active_session = 'OVERLAP'
+            session_quality = 'HIGH'
+        elif london_session:
+            active_session = 'LONDON'
+            session_quality = 'HIGH'
+        elif ny_session:
+            active_session = 'NEW_YORK'
+            session_quality = 'HIGH'
+        elif asian_session:
+            active_session = 'ASIAN'
+            session_quality = 'LOW'
+        else:
+            active_session = 'AFTER_HOURS'
+            session_quality = 'LOW'
+        
+        return {
+            'active_session': active_session,
+            'quality': session_quality,
+            'is_kill_zone': overlap_session or (8 <= current_hour < 10) or (13 <= current_hour < 15)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error analyzing session condition: {e}")
+        return {'active_session': 'UNKNOWN', 'quality': 'LOW', 'is_kill_zone': False}
+
+def determine_market_condition(volatility, trend_strength, volume_profile, market_structure):
+    """Determine overall market condition"""
+    try:
+        # Score different aspects
+        volatility_score = 3 if volatility['level'] == 'HIGH' else 2 if volatility['level'] == 'NORMAL' else 1
+        trend_score = 3 if trend_strength['strength'] == 'STRONG' else 2 if trend_strength['strength'] == 'MODERATE' else 1
+        volume_score = 3 if volume_profile['type'] == 'HIGH' else 2 if volume_profile['type'] == 'ELEVATED' else 1
+        structure_score = 3 if market_structure['type'] in ['UPTREND', 'DOWNTREND'] else 1
+        
+        total_score = volatility_score + trend_score + volume_score + structure_score
+        
+        # Determine condition
+        if total_score >= 12:
+            return 'TRENDING_HIGH_VOLATILITY'
+        elif total_score >= 10:
+            return 'TRENDING_NORMAL'
+        elif total_score >= 8:
+            return 'RANGING_ACTIVE'
+        elif total_score >= 6:
+            return 'RANGING_QUIET'
+        else:
+            return 'CONSOLIDATION'
+        
+    except Exception as e:
+        logger.error(f"Error determining market condition: {e}")
+        return 'UNKNOWN'
+
+def generate_optimization_parameters(condition, volatility, trend_strength, volume_profile):
+    """Generate optimization parameters based on market condition"""
+    try:
+        optimization = {
+            'signal_threshold_multiplier': 1.0,
+            'confidence_boost': 0,
+            'risk_reward_adjustment': 0,
+            'timeframe_preference': 'ALL',
+            'pattern_weights': {},
+            'quality_filters': []
+        }
+        
+        # Adjust parameters based on market condition
+        if condition == 'TRENDING_HIGH_VOLATILITY':
+            optimization.update({
+                'signal_threshold_multiplier': 0.8,  # Lower threshold for more signals
+                'confidence_boost': 5,  # Boost confidence
+                'risk_reward_adjustment': -0.5,  # Slightly lower R/R requirement
+                'timeframe_preference': 'SHORTER',  # Prefer shorter timeframes
+                'pattern_weights': {
+                    'TREND_FOLLOWING': 1.5,
+                    'BREAKOUT': 1.3,
+                    'MOMENTUM': 1.2
+                },
+                'quality_filters': ['HIGH_VOLUME', 'STRONG_TREND']
+            })
+        
+        elif condition == 'TRENDING_NORMAL':
+            optimization.update({
+                'signal_threshold_multiplier': 1.0,
+                'confidence_boost': 0,
+                'risk_reward_adjustment': 0,
+                'timeframe_preference': 'ALL',
+                'pattern_weights': {
+                    'TREND_FOLLOWING': 1.2,
+                    'BREAKOUT': 1.1,
+                    'MOMENTUM': 1.0
+                },
+                'quality_filters': ['NORMAL_VOLUME', 'MODERATE_TREND']
+            })
+        
+        elif condition == 'RANGING_ACTIVE':
+            optimization.update({
+                'signal_threshold_multiplier': 1.2,  # Higher threshold for quality
+                'confidence_boost': 10,  # Higher confidence requirement
+                'risk_reward_adjustment': 0.5,  # Higher R/R requirement
+                'timeframe_preference': 'LONGER',  # Prefer longer timeframes
+                'pattern_weights': {
+                    'MEAN_REVERSION': 1.5,
+                    'SUPPORT_RESISTANCE': 1.3,
+                    'RANGE_BOUND': 1.2
+                },
+                'quality_filters': ['KEY_LEVELS', 'VOLUME_CONFIRMATION']
+            })
+        
+        elif condition == 'RANGING_QUIET':
+            optimization.update({
+                'signal_threshold_multiplier': 1.5,  # Much higher threshold
+                'confidence_boost': 15,  # Much higher confidence
+                'risk_reward_adjustment': 1.0,  # Higher R/R requirement
+                'timeframe_preference': 'LONGER',
+                'pattern_weights': {
+                    'MEAN_REVERSION': 1.3,
+                    'SUPPORT_RESISTANCE': 1.1,
+                    'RANGE_BOUND': 1.0
+                },
+                'quality_filters': ['STRONG_KEY_LEVELS', 'HIGH_VOLUME', 'CLEAR_PATTERN']
+            })
+        
+        elif condition == 'CONSOLIDATION':
+            optimization.update({
+                'signal_threshold_multiplier': 2.0,  # Very high threshold
+                'confidence_boost': 20,  # Very high confidence
+                'risk_reward_adjustment': 1.5,  # Much higher R/R
+                'timeframe_preference': 'LONGER',
+                'pattern_weights': {
+                    'BREAKOUT': 1.5,
+                    'ACCUMULATION': 1.3,
+                    'DISTRIBUTION': 1.2
+                },
+                'quality_filters': ['BREAKOUT_CONFIRMATION', 'VOLUME_EXPLOSION', 'CLEAR_DIRECTION']
+            })
+        
+        return optimization
+        
+    except Exception as e:
+        logger.error(f"Error generating optimization parameters: {e}")
+        return {
+            'signal_threshold_multiplier': 1.0,
+            'confidence_boost': 0,
+            'risk_reward_adjustment': 0,
+            'timeframe_preference': 'ALL',
+            'pattern_weights': {},
+            'quality_filters': []
+        }
 
 app = FastAPI(title="Enhanced Clean Trading Signals Server", version="2.0.0")
 
@@ -980,6 +2710,12 @@ def analyze_smart_money_concepts(hist_data):
             return {'score': 0, 'pattern': 'INSUFFICIENT_DATA'}
         
         # Get price data
+        closes = hist_data['Close'].values
+        highs = hist_data['High'].values
+        lows = hist_data['Low'].values
+        volumes = hist_data['Volume'].values if 'Volume' in hist_data.columns else np.ones(len(closes))
+        
+        # Get price data
         highs = hist_data['High'].tolist()
         lows = hist_data['Low'].tolist()
         closes = hist_data['Close'].tolist()
@@ -995,9 +2731,10 @@ def analyze_smart_money_concepts(hist_data):
         if volume_profile.get('key_levels'):
             # Check if price is near high volume areas (institutional interest)
             for level in volume_profile['key_levels']:
-                if abs(current_price - level) / current_price < 0.02:  # Within 2%
+                level_price = level['price'] if isinstance(level, dict) else level
+                if abs(current_price - level_price) / current_price < 0.02:  # Within 2%
                     order_flow_score += 10
-                    order_flow_patterns.append(f"High Volume Node: ${level:.2f}")
+                    order_flow_patterns.append(f"High Volume Node: ${level_price:.2f}")
         
         # Institutional Order Flow Detection
         institutional_flow = detect_institutional_flow(hist_data)
@@ -1048,40 +2785,71 @@ def analyze_smart_money_concepts(hist_data):
             poi_score += confluence['score']
             poi_patterns.append(f"Confluent {confluence['type']} Zone")
         
-        # 4. TRADITIONAL SMC ANALYSIS (Premium/Discount)
+        # 4. ENHANCED SMC ANALYSIS (Fibonacci + Premium/Discount)
         recent_high = max(highs[-20:])
         recent_low = min(lows[-20:])
-        price_position = (current_price - recent_low) / (recent_high - recent_low) if recent_high != recent_low else 0.5
+        price_range = recent_high - recent_low
         
         smc_score = 0
-        if price_position > 0.8:
-            smc_score = 15  # Premium zone
-            pattern = "PREMIUM"
-        elif price_position < 0.2:
-            smc_score = 15  # Discount zone
-            pattern = "DISCOUNT"
+        pattern = "RANGE"
+        fib_levels = []
+        
+        if price_range > 0:  # Only calculate if there's a valid range
+            # Calculate Fibonacci retracement levels
+            fib_236 = recent_high - (price_range * 0.236)  # 23.6%
+            fib_382 = recent_high - (price_range * 0.382)  # 38.2%
+            fib_500 = recent_high - (price_range * 0.500)  # 50.0%
+            fib_618 = recent_high - (price_range * 0.618)  # 61.8%
+            fib_786 = recent_high - (price_range * 0.786)  # 78.6%
+            
+            fib_levels = [fib_236, fib_382, fib_500, fib_618, fib_786]
+            
+            # Check proximity to Fibonacci levels (within 1% of range)
+            tolerance = price_range * 0.01
+            
+            for i, fib_level in enumerate(fib_levels):
+                if abs(current_price - fib_level) <= tolerance:
+                    fib_percent = [23.6, 38.2, 50.0, 61.8, 78.6][i]
+                    
+                    if fib_percent <= 38.2:  # Discount zone (23.6%, 38.2%)
+                        smc_score = 20  # Higher score for Fib levels
+                        pattern = f"DISCOUNT_FIB_{fib_percent}%"
+                        break
+                    elif fib_percent >= 61.8:  # Premium zone (61.8%, 78.6%)
+                        smc_score = 20  # Higher score for Fib levels
+                        pattern = f"PREMIUM_FIB_{fib_percent}%"
+                        break
+                    elif fib_percent == 50.0:  # 50% retracement
+                        smc_score = 15
+                        pattern = "FIB_50%"
+                        break
+            
+            # Fallback to traditional premium/discount if no Fib level hit
+            if smc_score == 0:
+                price_position = (current_price - recent_low) / price_range
+                if price_position > 0.8:
+                    smc_score = 15  # Premium zone
+                    pattern = "PREMIUM"
+                elif price_position < 0.2:
+                    smc_score = 15  # Discount zone
+                    pattern = "DISCOUNT"
+                else:
+                    smc_score = 5   # Range
+                    pattern = "RANGE"
         else:
-            smc_score = 5   # Range
+            smc_score = 5
             pattern = "RANGE"
         
         # Combine all scores
         total_score = order_flow_score + structure_score + poi_score + smc_score
         all_patterns = order_flow_patterns + structure_patterns + poi_patterns
         
-        # Determine signal direction
-        if total_score > 30:
-            signal_type = "STRONG_BULLISH_SMC"
-        elif total_score > 15:
-            signal_type = "BULLISH_SMC"
-        elif total_score < -30:
-            signal_type = "STRONG_BEARISH_SMC"
-        elif total_score < -15:
-            signal_type = "BEARISH_SMC"
-        else:
-            signal_type = "NEUTRAL_SMC"
+        # Calculate price position for display
+        price_position = (current_price - recent_low) / price_range if price_range > 0 else 0.5
         
+        # Return the Fibonacci pattern (not signal type)
         return {
-            'pattern': signal_type,
+            'pattern': pattern,  # This contains the Fibonacci pattern like "DISCOUNT_FIB_38.2%"
             'score': total_score,
             'price_position': round(price_position, 2),
             'recent_high': round(recent_high, 2),
@@ -1221,7 +2989,7 @@ def detect_enhanced_order_blocks(hist_data):
                         'type': 'BULLISH_OB',
                         'price_range': (opens[i], highs[i]),
                         'strength': (closes[i] - opens[i]) / (highs[i] - lows[i]),
-                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]) if np.mean(volumes[i-5:i]) > 0 else 1,
                         'candle_index': i
                     })
                     score += 10
@@ -1244,7 +3012,7 @@ def detect_enhanced_order_blocks(hist_data):
                         'type': 'BEARISH_OB',
                         'price_range': (lows[i], opens[i]),
                         'strength': (opens[i] - closes[i]) / (highs[i] - lows[i]),
-                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                        'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]) if np.mean(volumes[i-5:i]) > 0 else 1,
                         'candle_index': i
                     })
                     score -= 10
@@ -1294,7 +3062,7 @@ def analyze_liquidity_concepts(hist_data):
                 liquidity_events.append({
                     'type': 'BULLISH_LIQUIDITY_SWEEP',
                     'price': highs[i],
-                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]) if np.mean(volumes[i-5:i]) > 0 else 1,
                     'candle_index': i
                 })
                 score += 8
@@ -1308,7 +3076,7 @@ def analyze_liquidity_concepts(hist_data):
                 liquidity_events.append({
                     'type': 'BEARISH_LIQUIDITY_SWEEP',
                     'price': lows[i],
-                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]),
+                    'volume_ratio': volumes[i] / np.mean(volumes[i-5:i]) if np.mean(volumes[i-5:i]) > 0 else 1,
                     'candle_index': i
                 })
                 score -= 8
@@ -1973,8 +3741,8 @@ def analyze_volume_price_action(hist_data):
         # 3. ACCUMULATION/DISTRIBUTION
         if len(close_prices) >= 10:
             # Calculate price change
-            price_change = (close_prices[-1] - close_prices[-10]) / close_prices[-10]
-            volume_change = (volume[-1] - avg_volume) / avg_volume
+            price_change = (close_prices[-1] - close_prices[-10]) / close_prices[-10] if close_prices[-10] != 0 else 0
+            volume_change = (volume[-1] - avg_volume) / avg_volume if avg_volume != 0 else 0
             
             if price_change > 0.02 and volume_change > 0.5:  # Strong up move with volume
                 score += 3
@@ -2036,7 +3804,7 @@ def analyze_volume_profile(hist_data):
         
         # Top 3 volume levels
         for i, (level, vol) in enumerate(sorted_levels[:3]):
-            volume_percentage = (vol / total_volume) * 100
+            volume_percentage = (vol / total_volume) * 100 if total_volume != 0 else 0
             if volume_percentage > 5:  # More than 5% of total volume
                 key_levels.append({
                     'price': round(level, 2),
@@ -2053,11 +3821,11 @@ def analyze_volume_profile(hist_data):
         # Volume Profile Patterns
         if len(key_levels) >= 2:
             # Check for Volume Profile patterns
-            levels = [level['price'] for level in key_levels]
+            levels = [level['price'] if isinstance(level, dict) else level for level in key_levels]
             current_price = close[-1]
             
             # POC (Point of Control) - highest volume level
-            poc_level = key_levels[0]['price']
+            poc_level = key_levels[0]['price'] if isinstance(key_levels[0], dict) else key_levels[0]
             
             if current_price > poc_level:
                 patterns.append("Price Above POC - Bullish Bias")
@@ -2067,7 +3835,7 @@ def analyze_volume_profile(hist_data):
                 score -= 8
             
             # Value Area (70% of volume)
-            value_area_volume = sum([level['volume_percentage'] for level in key_levels[:5]])
+            value_area_volume = sum([level['volume_percentage'] if isinstance(level, dict) else 0 for level in key_levels[:5]])
             if value_area_volume > 70:
                 patterns.append("Strong Value Area Formation")
                 score += 5
@@ -2185,7 +3953,7 @@ def analyze_market_sessions(hist_data):
         session_analysis = {
             'current_session': current_session,
             'session_name': sessions[current_session]['name'],
-            'volume_ratio': round(current_volume / avg_volume, 2),
+            'volume_ratio': round(current_volume / avg_volume, 2) if avg_volume > 0 else 1,
             'price_change': round(price_change * 100, 2),
             'signals': session_signals
         }
@@ -2317,7 +4085,7 @@ def calculate_technical_indicators(hist_data):
         return {}
 
 def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
-    """Generate HIGH-QUALITY trading signal using MULTI-TIMEFRAME ICT/SMC methodology"""
+    """Generate CLEAN ICT/SMC signal with ML enhancement - Focused on core principles"""
     try:
         if hist_data.empty or len(hist_data) < 20:
             return None
@@ -2325,82 +4093,141 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
         # Get current price
         current_price = hist_data['Close'].iloc[-1]
         
-        # ===== MULTI-TIMEFRAME ANALYSIS =====
-        multi_timeframe_analysis = perform_multi_timeframe_analysis(symbol)
+        # ===== MULTI-TIMEFRAME ICT/SMC ANALYSIS =====
+        # Get multi-timeframe data for trend analysis
+        multi_timeframe_data = get_multi_timeframe_data(symbol)
         
-        # Analyze components on current timeframe
+        # Core ICT/SMC analysis on current timeframe
         kill_zone_analysis = analyze_kill_zones(hist_data, timeframe)
-        smc_analysis = analyze_smart_money_concepts(hist_data)
+        order_blocks = detect_enhanced_order_blocks(hist_data)
+        fvg_analysis = detect_fair_value_gaps(hist_data)
+        liquidity_analysis = analyze_liquidity_concepts(hist_data)
         technical_indicators = calculate_technical_indicators(hist_data)
         
-        # Calculate signal score with STRICTER criteria
+        # ===== ADVANCED ICT/SMC FEATURES =====
+        # Enhanced Market Structure Analysis
+        market_structure = analyze_market_structure(hist_data)
+        
+        # Institutional Order Flow Analysis
+        institutional_flow = analyze_institutional_order_flow(hist_data)
+        
+        # Trading Sessions & Kill Zones Analysis
+        session_analysis = analyze_trading_sessions(hist_data)
+        
+        # Smart Money Concepts Analysis
+        smc_analysis = analyze_smart_money_concepts(hist_data)
+        
+        # Advanced ICT Pattern Detection
+        advanced_patterns = detect_advanced_ict_patterns(hist_data)
+        
+        # Market Condition Analysis & Optimization
+        market_conditions = analyze_market_conditions(hist_data)
+        optimization = market_conditions['optimization']
+        
+        # ===== MULTI-TIMEFRAME TREND ANALYSIS =====
+        trend_analysis = analyze_multi_timeframe_trend(multi_timeframe_data)
+        
+        # ===== CORE ICT/SMC SIGNAL GENERATION =====
         signal_score = 0
         quality_factors = []
         
-        # 1. Kill Zone Analysis (ICT) - More selective
+        # 1. Multi-timeframe trend alignment (Higher timeframe bias)
+        if trend_analysis['trend_alignment'] > 0.6:  # 60%+ alignment
+            signal_score += 25
+            quality_factors.append(f"Multi-TF Trend: {trend_analysis['primary_trend']}")
+        
+        # 2. Kill Zone Analysis (Core ICT)
         kill_zone_score = kill_zone_analysis.get('score', 0)
         if kill_zone_score > 0:
             signal_score += kill_zone_score
             quality_factors.append(f"Kill Zone: {kill_zone_analysis.get('active_session', 'N/A')}")
         
-        # 2. Smart Money Concepts (SMC) - More selective
-        smc_score = smc_analysis.get('score', 0)
-        if smc_score > 0:
-            signal_score += smc_score
-            quality_factors.append(f"SMC: {smc_analysis.get('pattern', 'N/A')}")
-        
-        # 2.1. Fair Value Gaps (FVG) - NEW!
-        fvg_analysis = detect_fair_value_gaps(hist_data)
-        fvg_score = fvg_analysis.get('score', 0)
-        fvg_patterns = fvg_analysis.get('patterns', [])
-        if fvg_score != 0:
-            signal_score += fvg_score
-            quality_factors.extend([f"FVG: {pattern}" for pattern in fvg_patterns[:2]])
-        
-        # 2.2. Enhanced Order Blocks - NEW!
-        order_blocks = detect_enhanced_order_blocks(hist_data)
+        # 3. Order Blocks (Core SMC)
         ob_score = order_blocks.get('score', 0)
         ob_patterns = order_blocks.get('patterns', [])
         if ob_score != 0:
             signal_score += ob_score
-            quality_factors.extend([f"OB: {pattern}" for pattern in ob_patterns[:2]])
+            quality_factors.extend([f"Order Block: {pattern}" for pattern in ob_patterns[:1]])
         
-        # 2.3. Liquidity Concepts - NEW!
-        liquidity_analysis = analyze_liquidity_concepts(hist_data)
-        liq_score = liquidity_analysis.get('score', 0)
-        liq_patterns = liquidity_analysis.get('patterns', [])
-        if liq_score != 0:
-            signal_score += liq_score
-            quality_factors.extend([f"Liquidity: {pattern}" for pattern in liq_patterns[:2]])
+        # 4. Fair Value Gaps (Core ICT)
+        fvg_score = fvg_analysis.get('score', 0)
+        fvg_patterns = fvg_analysis.get('patterns', [])
+        if fvg_score != 0:
+            signal_score += fvg_score
+            quality_factors.extend([f"FVG: {pattern}" for pattern in fvg_patterns[:1]])
         
-        # 2.4. NEWS SENTIMENT ANALYSIS - NEW!
+        # 5. Liquidity Sweeps (Core SMC)
+        liquidity_score = liquidity_analysis.get('score', 0)
+        liquidity_patterns = liquidity_analysis.get('patterns', [])
+        if liquidity_score != 0:
+            signal_score += liquidity_score
+            quality_factors.extend([f"Liquidity: {pattern}" for pattern in liquidity_patterns[:1]])
+        
+        # 6. Key level confluence (Multi-timeframe levels)
+        level_confluence = check_level_confluence(current_price, multi_timeframe_data)
+        if level_confluence > 0:
+            signal_score += level_confluence
+            quality_factors.append(f"Key Level Confluence: {level_confluence} levels")
+        
+        # 7. Market Structure Breaks (BOS/CHoCH)
+        if market_structure['bos']:
+            signal_score += 20
+            quality_factors.append(f"Break of Structure: {market_structure['bos_details']['type']}")
+        elif market_structure['choch']:
+            signal_score += 15
+            quality_factors.append(f"Change of Character: {market_structure['choch_details']['type']}")
+        
+        # 8. Advanced ICT Pattern Detection
+        advanced_score = advanced_patterns.get('score', 0)
+        advanced_confluence = advanced_patterns.get('confluence', 0)
+        if advanced_score > 0:
+            signal_score += advanced_score
+            quality_factors.append(f"Advanced Patterns: {len(advanced_patterns.get('patterns', []))} detected")
+        if advanced_confluence > 0:
+            signal_score += advanced_confluence
+            quality_factors.append(f"Pattern Confluence: {advanced_confluence} points")
+        
+        # 9. Market Condition Optimization
+        # Apply market condition optimization to signal parameters
+        signal_score = int(signal_score * optimization.get('signal_threshold_multiplier', 1.0))
+        confidence_boost = optimization.get('confidence_boost', 0)
+        risk_reward_adjustment = optimization.get('risk_reward_adjustment', 0)
+        
+        # 8. Institutional Order Flow
+        if institutional_flow['detected']:
+            signal_score += institutional_flow['score']
+            quality_factors.append(f"Institutional Flow: {institutional_flow['type']}")
+        
+        # 9. Trading Session Quality
+        if session_analysis['kill_zones']:
+            best_kill_zone = session_analysis['kill_zones'][0]  # Highest quality
+            signal_score += best_kill_zone['quality'] * 10
+            quality_factors.append(f"Kill Zone: {best_kill_zone['name']} ({best_kill_zone['quality']:.2f})")
+        
+        # 2.4. NEWS SENTIMENT ANALYSIS
         news_sentiment = analyze_news_sentiment(symbol)
-        if news_sentiment is None:
-            news_sentiment = {'score': 0, 'patterns': [], 'sentiment_data': {}}
-        sentiment_score = news_sentiment.get('score', 0)
-        sentiment_patterns = news_sentiment.get('patterns', [])
-        sentiment_data = news_sentiment.get('sentiment_data', {})
-        
-        if sentiment_score != 0:
-            signal_score += sentiment_score
-            quality_factors.extend([f"News: {pattern}" for pattern in sentiment_patterns[:2]])
+        if news_sentiment and news_sentiment.get('score', 0) != 0:
+            signal_score += news_sentiment['score']
+            quality_factors.extend([f"News: {pattern}" for pattern in news_sentiment.get('patterns', [])[:2]])
         
         # 3. MULTI-TIMEFRAME CONFIRMATION - Critical for quality
-        mtf_score = multi_timeframe_analysis.get('consensus_score', 0)
-        mtf_direction = multi_timeframe_analysis.get('consensus_direction', 'NEUTRAL')
-        mtf_confidence = multi_timeframe_analysis.get('consensus_confidence', 0)
+        mtf_direction = trend_analysis.get('consensus_direction', 'NEUTRAL')
+        mtf_confidence = trend_analysis.get('consensus_confidence', 0)
         
-        # STRICT Multi-timeframe validation - prevents conflicting signals
-        if mtf_direction == 'BULLISH' and mtf_confidence > 60:
-            signal_score += mtf_score
+        # Apply market condition optimization to MTF requirements
+        mtf_threshold = 70 + confidence_boost  # Dynamic threshold based on market conditions
+        
+        # STRICT Multi-timeframe validation - ensures high quality
+        if mtf_direction == 'BULLISH' and mtf_confidence > mtf_threshold:
+            signal_score += trend_analysis.get('consensus_score', 0)
             quality_factors.append(f"MTF Bullish: {mtf_confidence}%")
-        elif mtf_direction == 'BEARISH' and mtf_confidence > 60:
-            signal_score -= mtf_score
+        elif mtf_direction == 'BEARISH' and mtf_confidence > mtf_threshold:
+            signal_score -= trend_analysis.get('consensus_score', 0)
             quality_factors.append(f"MTF Bearish: {mtf_confidence}%")
         else:
-            # Multi-timeframe doesn't confirm - SEVERELY reduce signal strength
-            signal_score *= 0.1  # Much more aggressive reduction
-            quality_factors.append(f"⚠️ MTF Conflict: {mtf_confidence}% Neutral")
+            # Multi-timeframe doesn't confirm - reject signal for quality
+            quality_factors.append(f"🚨 REJECTED: MTF Conflict {mtf_confidence}%")
+            return None
             
             # If multi-timeframe is neutral, don't allow high confidence signals
             if mtf_confidence > 80:  # High neutral consensus
@@ -2497,9 +4324,10 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             signal_score -= 10
             quality_factors.append("Below SMA20")
         
-        # 7. Signal Determination - Balanced quality for profitable trading
-        min_confidence = 55  # Balanced minimum confidence for quality signals
-        strong_threshold = 75  # Strong signal threshold
+        # 7. Signal Determination - HIGH QUALITY ONLY for profitability
+        # Apply market condition optimization to confidence thresholds
+        min_confidence = 65 + confidence_boost  # Dynamic confidence based on market conditions
+        strong_threshold = 80 + confidence_boost  # Dynamic strong threshold
         
         # DEBUG: Log signal score for debugging
         logger.info(f"Signal Debug for {symbol}: Score={signal_score}, MTF={mtf_direction} ({mtf_confidence}%), PA={pa_score}")
@@ -2509,35 +4337,65 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             quality_factors.append("🚨 REJECTED: Very High Neutral MTF Consensus")
             return None
         
-        if signal_score >= 15:  # Lower threshold for BUY
+        # HIGH QUALITY SIGNALS ONLY - Focus on profitability
+        if signal_score >= 20:  # High threshold for BUY
             signal_type = "BUY"
-            confidence = min(95, 55 + (signal_score - 15) * 1.2)
-        elif signal_score <= -15:  # Lower threshold for SELL
+            confidence = min(95, 60 + (signal_score - 20) * 1.0)
+        elif signal_score <= -20:  # High threshold for SELL
             signal_type = "SELL"
-            confidence = min(95, 55 + abs(signal_score + 15) * 1.2)
+            confidence = min(95, 60 + abs(signal_score + 20) * 1.0)
         else:
-            # No signal if not strong enough
+            # No signal if not strong enough - quality over quantity
             return None
         
         # 7. Final Quality Check - Only return high-quality signals
         if confidence < min_confidence:
             return None
         
-        # 8. Calculate price targets with better risk management
+        # 8. ADDITIONAL QUALITY FILTERS for profitability
+        # Require at least 3 quality factors for high-quality signals
+        if len(quality_factors) < 3:
+            quality_factors.append("🚨 REJECTED: Insufficient Quality Factors")
+            return None
+        
+        # Require institutional flow confirmation for high-quality signals
+        if not institutional_flow['detected']:
+            quality_factors.append("⚠️ No Institutional Flow Detected")
+            # Don't reject, but note the limitation
+        
+        # Require market structure confirmation
+        if not market_structure['bos'] and not market_structure['choch']:
+            quality_factors.append("⚠️ No Market Structure Break")
+            # Don't reject, but note the limitation
+        
+        # 9. Calculate price targets with STRICT risk management for profitability
         atr = hist_data['High'].rolling(14).max() - hist_data['Low'].rolling(14).min()
         current_atr = atr.iloc[-1] if not atr.empty else current_price * 0.02
         
-        # Better risk/reward ratios
+        # Ensure minimum ATR for meaningful price targets
+        min_atr = current_price * 0.008  # 0.8% minimum for quality
+        current_atr = max(current_atr, min_atr)
+        
+        # STRICT Risk/Reward requirements for profitability
+        # Apply market condition optimization to risk/reward requirements
+        min_risk_reward = 2.0 + risk_reward_adjustment  # Dynamic R/R based on market conditions
+        
         if signal_type == "BUY":
-            target_price = current_price + (current_atr * 2.5)  # 2.5:1 R/R
+            target_price = current_price + (current_atr * min_risk_reward)
             stop_loss = current_price - (current_atr * 1.0)
         elif signal_type == "SELL":
-            target_price = current_price - (current_atr * 2.5)  # 2.5:1 R/R
+            target_price = current_price - (current_atr * min_risk_reward)
             stop_loss = current_price + (current_atr * 1.0)
         
+        # Final R/R check - reject if below minimum
+        risk_reward = abs(target_price - current_price) / abs(current_price - stop_loss) if current_price != stop_loss else 0
+        if risk_reward < min_risk_reward:
+            quality_factors.append(f"🚨 REJECTED: Poor R/R {risk_reward:.1f}:1")
+            return None
+        
         # 9. Final validation - Ensure reasonable targets
-        risk_reward = abs(target_price - current_price) / abs(current_price - stop_loss)
-        if risk_reward < 1.5:  # Minimum 1.5:1 risk/reward
+        risk_reward = abs(target_price - current_price) / abs(current_price - stop_loss) if current_price != stop_loss else 1
+        if risk_reward < 2.0:  # Minimum 2:1 risk/reward
             return None
         
         signal_data = {
@@ -2558,7 +4416,18 @@ def generate_ict_smc_signal(symbol, hist_data, timeframe="1h"):
             'liquidity_analysis': liquidity_analysis,  # NEW: Liquidity Concepts
             'news_sentiment': news_sentiment,  # NEW: News sentiment analysis
             'technical_indicators': technical_indicators,
-            'multi_timeframe': multi_timeframe_analysis,
+                            'multi_timeframe': {
+                    'trend_analysis': trend_analysis,
+                    'key_levels': get_all_key_levels(multi_timeframe_data),
+                    'market_structure': get_market_structure_summary(multi_timeframe_data)
+                },
+                'advanced_ict_smc': {
+                    'market_structure': market_structure,
+                    'institutional_flow': institutional_flow,
+                    'session_analysis': session_analysis,
+                    'advanced_patterns': advanced_patterns,
+                    'market_conditions': market_conditions
+                },
             'price_action': price_action_analysis,  # NEW: Price action analysis
             'volume_profile': volume_profile_analysis,  # NEW: Volume profile analysis
             'market_session': session_analysis,  # NEW: Market session analysis
@@ -2605,9 +4474,20 @@ def generate_basic_analysis(symbol, hist_data, info, current_price, previous_clo
         if confidence < min_confidence:
             return None  # Reject very low-confidence signals
         
-        # Calculate basic price targets
-        atr = hist_data['High'].rolling(14).max() - hist_data['Low'].rolling(14).min()
-        current_atr = atr.iloc[-1] if not atr.empty else current_price * 0.02
+        # Calculate basic price targets with better ATR calculation
+        if len(hist_data) >= 14:
+            high_low = hist_data['High'] - hist_data['Low']
+            high_close = abs(hist_data['High'] - hist_data['Close'].shift(1))
+            low_close = abs(hist_data['Low'] - hist_data['Close'].shift(1))
+            true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            atr = true_range.rolling(14).mean()
+            current_atr = atr.iloc[-1] if not atr.empty and not pd.isna(atr.iloc[-1]) else current_price * 0.02
+        else:
+            current_atr = current_price * 0.02  # 2% of price as fallback
+        
+        # Ensure minimum ATR for meaningful price targets
+        min_atr = current_price * 0.005  # 0.5% minimum
+        current_atr = max(current_atr, min_atr)
         
         if signal_type == "BUY":
             target_price = current_price + (current_atr * 2)
@@ -2616,8 +4496,9 @@ def generate_basic_analysis(symbol, hist_data, info, current_price, previous_clo
             target_price = current_price - (current_atr * 2)
             stop_loss = current_price + (current_atr * 1)
         else:
-            target_price = current_price
-            stop_loss = current_price
+            # For HOLD signals, still provide meaningful targets
+            target_price = current_price + (current_atr * 1.5)
+            stop_loss = current_price - (current_atr * 1.5)
         
         # Quality factors
         quality_factors = []
@@ -2657,7 +4538,7 @@ def generate_basic_analysis(symbol, hist_data, info, current_price, previous_clo
             'stop_loss': round(stop_loss, 2),
             'signal_score': 0,  # Basic analysis
             'quality_factors': quality_factors,
-            'risk_reward': round(abs(target_price - current_price) / abs(current_price - stop_loss), 2) if current_price != stop_loss else 1,
+            'risk_reward': round(abs(target_price - current_price) / abs(current_price - stop_loss), 2) if current_price != stop_loss and abs(current_price - stop_loss) > 0 else 1,
             'volume_ratio': round(volume_ratio, 2),
             'kill_zone': kill_zone_analysis,
             'smc_analysis': smc_analysis,
@@ -3691,12 +5572,27 @@ async def analyze_symbol(symbol: str):
         # Get LIVE data
         ticker = yf.Ticker(symbol)
         
-        # Get real-time market info
-        info = ticker.info
-        current_price = info.get('regularMarketPrice', 0)
-        previous_close = info.get('previousClose', 0)
-        volume = info.get('volume', 0)
-        market_cap = info.get('marketCap', 0)
+        # Get real-time market info with better error handling
+        try:
+            info = ticker.info
+            current_price = info.get('regularMarketPrice', 0)
+            previous_close = info.get('previousClose', 0)
+            volume = info.get('volume', 0)
+            market_cap = info.get('marketCap', 0)
+            
+            # Handle crypto symbols that might not have all fields
+            if current_price == 0:
+                current_price = info.get('currentPrice', 0)
+            if previous_close == 0:
+                previous_close = info.get('previousClose', current_price)
+            if volume == 0:
+                volume = info.get('volume24h', 0)
+            if market_cap == 0:
+                market_cap = info.get('marketCap', 0)
+                
+        except Exception as e:
+            logger.error(f"Error getting market info for {symbol}: {e}")
+            raise HTTPException(status_code=400, detail=f"Unable to fetch market data for {symbol}")
         
         # Get live historical data
         hist = ticker.history(period="5d", interval="1h")
@@ -3713,16 +5609,21 @@ async def analyze_symbol(symbol: str):
         
         # Safety check - if analysis is still None, create a minimal response
         if not analysis:
+            # Calculate meaningful targets even for minimal response
+            min_atr = current_price * 0.005  # 0.5% minimum
+            target_price = current_price + (min_atr * 1.5)
+            stop_loss = current_price - (min_atr * 1.5)
+            
             analysis = {
                 'symbol': symbol,
                 'signal': 'HOLD',
                 'confidence': 0,
                 'current_price': current_price,
-                'target_price': current_price,
-                'stop_loss': current_price,
+                'target_price': target_price,
+                'stop_loss': stop_loss,
                 'signal_score': 0,
                 'quality_factors': ['Insufficient data for analysis'],
-                'risk_reward': 0,
+                'risk_reward': 1.0,
                 'volume_ratio': 1,
                 'technical_indicators': {},
                 'multi_timeframe': {},
@@ -3734,8 +5635,14 @@ async def analyze_symbol(symbol: str):
         analysis['live_price'] = current_price
         analysis['price_change'] = round(current_price - previous_close, 2)
         analysis['price_change_pct'] = round(((current_price - previous_close) / previous_close) * 100, 2) if previous_close > 0 else 0
-        analysis['volume'] = volume
-        analysis['market_cap'] = market_cap
+        
+        # Handle forex symbols (no volume/market cap)
+        if symbol.endswith('=X') or symbol in ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD']:
+            analysis['volume'] = "N/A (Forex)"
+            analysis['market_cap'] = "N/A (Forex)"
+        else:
+            analysis['volume'] = volume
+            analysis['market_cap'] = market_cap
         analysis['is_live'] = True
         analysis['analysis_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
@@ -3752,6 +5659,9 @@ async def analyze_symbol(symbol: str):
             'pe_ratio': info.get('trailingPE', 0),
             'eps': info.get('trailingEps', 0)
         }
+        
+        # Clean NaN values before returning
+        analysis = clean_nan_values(analysis)
         
         return {
             "status": "success",
